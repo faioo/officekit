@@ -38,8 +38,31 @@ WINDOWS_VENDOR_WARNING = (
 )
 
 
+def configure_utf8_stdio() -> None:
+    """Prefer UTF-8 console output for Windows CI and localized metadata."""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not reconfigure:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (TypeError, ValueError, OSError):
+            continue
+
+
+configure_utf8_stdio()
+
+
 def log(message: str) -> None:
-    print(f"[BUILD] {message}")
+    try:
+        print(f"[BUILD] {message}")
+    except UnicodeEncodeError:
+        safe_message = message.encode(
+            sys.stdout.encoding or "utf-8",
+            errors="backslashreplace",
+        ).decode(sys.stdout.encoding or "utf-8")
+        print(f"[BUILD] {safe_message}")
 
 
 def check_and_install_dependencies() -> None:
@@ -126,6 +149,8 @@ def build_desktop_app(target_platform: str) -> None:
     log(f"Executing packaging command: {' '.join(pack_args)}")
     env = os.environ.copy()
     env["PYTHONPATH"] = str(root_dir / "src")
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
 
     # Run the flet pack command
     try:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import sys
 import zipfile
 from pathlib import Path
 
@@ -12,6 +14,19 @@ SPEC = importlib.util.spec_from_file_location("build_app", BUILD_APP_PATH)
 build_app = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(build_app)
+
+
+def test_log_handles_non_utf8_stdout(mocker):
+    """Windows cp1252 consoles should not crash when build logs contain Chinese."""
+    output = io.BytesIO()
+    stream = io.TextIOWrapper(output, encoding="cp1252", errors="strict")
+    mocker.patch.object(sys, "stdout", stream)
+
+    build_app.log("OfficeKit 办公小工具平台")
+    stream.flush()
+
+    assert b"OfficeKit" in output.getvalue()
+    assert br"\u529e\u516c" in output.getvalue()
 
 
 def test_find_poppler_root_under_accepts_library_layout(tmp_path):
