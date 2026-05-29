@@ -10,19 +10,23 @@ from officekit.tools.word2img.core import convert_word_to_images
 
 
 class Word2ImgFrame(BaseToolFrame):
-    """Word to Image tool interface."""
+    """Word to Image tool interface with batch and directory support."""
 
     def __init__(self, page: ft.Page, **kwargs) -> None:
+        self.selected_files: list[str] = []
+        self.selected_folder: str = ""
+
         self.file_path_field = ft.TextField(
-            label="Word 文件路径 (.doc, .docx)",
-            hint_text="请选择 Word 文档...",
+            label="输入 Word 文件或文件夹",
+            hint_text="点击右侧图标选择 Word 文件或文件夹...",
             expand=True,
             read_only=True,
         )
         self.output_dir_field = ft.TextField(
-            label="图片输出目录 (留空则默认在文档同级创建目录)",
-            hint_text="请选择输出目录...",
+            label="图片输出目录 (留空则默认在各文档同级创建目录)",
+            hint_text="点击右侧图标选择输出目录...",
             expand=True,
+            read_only=True,
         )
         self.format_radio = ft.RadioGroup(
             content=ft.Row(
@@ -48,10 +52,11 @@ class Word2ImgFrame(BaseToolFrame):
         super().__init__(page, **kwargs)
 
     def build_ui(self) -> ft.Control:
-        # File pickers
-        self.file_picker = ft.FilePicker(on_result=self.on_file_selected)
-        self.dir_picker = ft.FilePicker(on_result=self.on_dir_selected)
-        self.page.overlay.extend([self.file_picker, self.dir_picker])
+        # File/Directory pickers
+        self.files_picker = ft.FilePicker(on_result=self.on_files_selected)
+        self.input_dir_picker = ft.FilePicker(on_result=self.on_input_dir_selected)
+        self.output_dir_picker = ft.FilePicker(on_result=self.on_output_dir_selected)
+        self.page.overlay.extend([self.files_picker, self.input_dir_picker, self.output_dir_picker])
 
         # Sections
         section_files = create_section_container(
@@ -61,11 +66,17 @@ class Word2ImgFrame(BaseToolFrame):
                     controls=[
                         self.file_path_field,
                         ft.IconButton(
-                            icon=ft.Icons.FOLDER_OPEN_OUTLINED,
-                            tooltip="浏览 Word 文件",
-                            on_click=lambda _: self.file_picker.pick_files(
-                                allowed_extensions=["doc", "docx"]
+                            icon=ft.Icons.FILE_OPEN_OUTLINED,
+                            tooltip="选择 Word 文件 (可多选)",
+                            on_click=lambda _: self.files_picker.pick_files(
+                                allowed_extensions=["doc", "docx"],
+                                allow_multiple=True,
                             ),
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.FOLDER_OPEN_OUTLINED,
+                            tooltip="选择包含 Word 的文件夹",
+                            on_click=lambda _: self.input_dir_picker.get_directory_path(),
                         ),
                     ]
                 ),
@@ -74,8 +85,8 @@ class Word2ImgFrame(BaseToolFrame):
                         self.output_dir_field,
                         ft.IconButton(
                             icon=ft.Icons.DRIVE_FILE_MOVE_OUTLINED,
-                            tooltip="浏览输出目录",
-                            on_click=lambda _: self.dir_picker.get_directory_path(),
+                            tooltip="选择输出图片保存目录",
+                            on_click=lambda _: self.output_dir_picker.get_directory_path(),
                         ),
                     ]
                 ),
@@ -146,7 +157,7 @@ class Word2ImgFrame(BaseToolFrame):
         return ft.Column(
             controls=[
                 ft.Text("Word 文档转图片", size=22, weight=ft.FontWeight.BOLD),
-                ft.Text("将 Word 文档 (.doc / .docx) 的每一页自动转换为高清 PNG 或 JPEG 图片。", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text("支持单个文件、多个文件或整个文件夹的 Word 文档 (.doc / .docx) 批量转换为高清图片。", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.Divider(height=20, thickness=1),
                 ft.ListView(
                     controls=[
@@ -162,13 +173,26 @@ class Word2ImgFrame(BaseToolFrame):
             expand=True,
         )
 
-    def on_file_selected(self, e: ft.FilePickerResultEvent) -> None:
-        """Called when a Word file is selected."""
+    def on_files_selected(self, e: ft.FilePickerResultEvent) -> None:
+        """Called when one or more Word files are selected."""
         if e.files and len(e.files) > 0:
-            self.file_path_field.value = e.files[0].path
+            self.selected_files = [file.path for file in e.files]
+            self.selected_folder = ""  # Clear folder selection
+            if len(self.selected_files) == 1:
+                self.file_path_field.value = self.selected_files[0]
+            else:
+                self.file_path_field.value = f"已选择 {len(self.selected_files)} 个 Word 文件"
             self.page.update()
 
-    def on_dir_selected(self, e: ft.FilePickerResultEvent) -> None:
+    def on_input_dir_selected(self, e: ft.FilePickerResultEvent) -> None:
+        """Called when an input directory is selected."""
+        if e.path:
+            self.selected_folder = e.path
+            self.selected_files = []  # Clear files selection
+            self.file_path_field.value = f"已选择文件夹: {self.selected_folder}"
+            self.page.update()
+
+    def on_output_dir_selected(self, e: ft.FilePickerResultEvent) -> None:
         """Called when an output directory is selected."""
         if e.path:
             self.output_dir_field.value = e.path
@@ -176,9 +200,8 @@ class Word2ImgFrame(BaseToolFrame):
 
     def on_start_click(self, e) -> None:
         """Handle run button click."""
-        input_file = self.file_path_field.value
-        if not input_file or input_file == "请选择 Word 文档...":
-            self.show_dialog("警告", "请先选择一个 Word 文档！")
+        if not self.selected_files and not self.selected_folder:
+            self.show_dialog("警告", "请先选择一个或多个 Word 文件，或者选择一个文件夹！")
             return
 
         out_dir = self.output_dir_field.value or None
@@ -186,28 +209,70 @@ class Word2ImgFrame(BaseToolFrame):
         dpi = int(self.dpi_dropdown.value or 150)
 
         # Run background thread
-        self.start_task(self.run_conversion_task, input_file, out_dir, img_format, dpi)
+        self.start_task(self.run_conversion_task, out_dir, img_format, dpi)
 
     def run_conversion_task(
-        self, input_file: str, out_dir: str | None, img_format: str, dpi: int
+        self, out_dir: str | None, img_format: str, dpi: int
     ) -> None:
         """Synchronous task executed in the background thread."""
-        self.log(f"开始转换 Word 文档: {Path(input_file).name}")
-        self.update_progress(None, "正在进行文档分析并转换为 PDF...")
+        files_to_convert: list[Path] = []
 
-        self.log("正在启动 LibreOffice headless 进程，请稍候...")
-        # Since convert_word_to_images is blocking, we run it
-        # We can update logs as we progress
-        images = convert_word_to_images(
-            input_path=input_file,
-            output_dir=out_dir,
-            image_format=img_format,
-            dpi=dpi,
-        )
+        if self.selected_folder:
+            folder_path = Path(self.selected_folder)
+            self.log(f"正在扫描文件夹: {folder_path.name} ...")
+            # Scan doc and docx, ignoring temporary files (like ~$report.docx)
+            for item in folder_path.glob("**/*"):
+                if item.is_file() and item.suffix.lower() in {".doc", ".docx"}:
+                    if not item.name.startswith("~$"):
+                        files_to_convert.append(item)
+            
+            if not files_to_convert:
+                self.log(f"在文件夹中未找到任何支持的 Word 文档 (.doc, .docx)", level="WARNING")
+                self.show_dialog("警告", "所选文件夹中未找到任何支持 of Word 文档！")
+                return
+            self.log(f"扫描完毕，共发现 {len(files_to_convert)} 个 Word 文档待转换。")
+        else:
+            files_to_convert = [Path(f) for f in self.selected_files]
+            self.log(f"已选择 {len(files_to_convert)} 个文件准备转换。")
 
-        self.log(f"LibreOffice 和 pdftoppm 转换成功！共生成了 {len(images)} 张图片：")
-        for idx, img in enumerate(images, 1):
-            self.log(f"  [{idx}/{len(images)}] 已保存: {img.name}")
+        total_files = len(files_to_convert)
+        self.log(f"开始批量转换 Word 任务，总计 {total_files} 个文件...")
 
-        self.update_progress(1.0, f"完成！成功转换并生成 {len(images)} 张图片。")
-        self.show_dialog("成功", f"Word 转图片任务完成！\n\n共生成了 {len(images)} 张图片。")
+        success_count = 0
+        all_generated_images = []
+
+        for index, file_path in enumerate(files_to_convert, 1):
+            self.log("-" * 50)
+            self.log(f"[{index}/{total_files}] 正在转换: {file_path.name}")
+            self.update_progress(
+                (index - 1) / total_files,
+                f"正在转换 ({index}/{total_files}): {file_path.name} ..."
+            )
+
+            try:
+                images = convert_word_to_images(
+                    input_path=file_path,
+                    output_dir=out_dir,
+                    image_format=img_format,
+                    dpi=dpi,
+                )
+                self.log(f"[{index}/{total_files}] 转换成功！共生成了 {len(images)} 张图片：")
+                for idx, img in enumerate(images, 1):
+                    self.log(f"  -> 已保存: {img.name}")
+                success_count += 1
+                all_generated_images.extend(images)
+            except Exception as ex:
+                self.log(f"[{index}/{total_files}] 转换失败！原因: {str(ex)}", level="ERROR")
+
+        self.log("=" * 50)
+        self.log(f"批量转换任务结束！")
+        self.log(f"成功: {success_count} / {total_files}")
+        if total_files - success_count > 0:
+            self.log(f"失败: {total_files - success_count}", level="WARNING")
+
+        self.update_progress(1.0, f"完成！成功转换 {success_count}/{total_files} 个文档。")
+        
+        if success_count == total_files:
+            self.show_dialog("成功", f"批量 Word 转图片任务全部完成！\n\n共成功转换 {success_count} 个文档，生成了 {len(all_generated_images)} 张图片。")
+        else:
+            self.show_dialog("完成", f"批量 Word 转图片任务已结束。\n\n成功: {success_count} 个文档\n失败: {total_files - success_count} 个文档\n\n详情请查看日志区。")
