@@ -38,9 +38,9 @@ class DOIQueryFrame(BaseToolFrame):
         )
 
         # Statistics widgets
-        self.total_card = self._create_stat_card("总记录数", "0", ft.colors.PRIMARY)
-        self.success_card = self._create_stat_card("成功匹配", "0", ft.colors.GREEN)
-        self.error_card = self._create_stat_card("查询失败", "0", ft.colors.RED)
+        self.total_card = self._create_stat_card("总记录数", "0", ft.Colors.PRIMARY)
+        self.success_card = self._create_stat_card("成功匹配", "0", ft.Colors.GREEN)
+        self.error_card = self._create_stat_card("查询失败", "0", ft.Colors.RED)
 
         super().__init__(page, **kwargs)
 
@@ -48,7 +48,7 @@ class DOIQueryFrame(BaseToolFrame):
         return ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text(title, size=12, color=ft.colors.ON_SURFACE_VARIANT),
+                    ft.Text(title, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Text(
                         init_val,
                         size=22,
@@ -61,7 +61,7 @@ class DOIQueryFrame(BaseToolFrame):
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=5,
             ),
-            bgcolor=ft.colors.SURFACE_CONTAINER_HIGH,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
             border_radius=8,
             padding=10,
             expand=True,
@@ -144,12 +144,12 @@ class DOIQueryFrame(BaseToolFrame):
         # Section 4: Controls & Progress
         self.run_btn = ft.ElevatedButton(
             "▶ 开始批量查询",
-            bgcolor=ft.colors.BLUE,
-            color=ft.colors.WHITE,
+            bgcolor=ft.Colors.BLUE,
+            color=ft.Colors.WHITE,
             on_click=self.on_start_click,
             expand=True,
         )
-        self.progress_bar = ft.ProgressBar(value=0.0, expand=True, color=ft.colors.BLUE)
+        self.progress_bar = ft.ProgressBar(value=0.0, expand=True, color=ft.Colors.BLUE)
         self.progress_text = ft.Text("状态: 已就绪", size=13, italic=True)
 
         section_actions = create_section_container(
@@ -168,9 +168,9 @@ class DOIQueryFrame(BaseToolFrame):
             max_lines=12,
             read_only=True,
             text_size=12,
-            font_family="monospace",
+            text_style=ft.TextStyle(font_family="monospace"),
             hint_text="处理日志与查询反馈将在此显示...",
-            border_color=ft.colors.OUTLINE_VARIANT,
+            border_color=ft.Colors.OUTLINE_VARIANT,
         )
         section_log = create_section_container("5. 查询日志", [self.log_area])
 
@@ -188,7 +188,7 @@ class DOIQueryFrame(BaseToolFrame):
                 ft.Text(
                     "读取 Excel 表格中的 Title, Journal, Year 列，从 Crossref 检索最新 DOI，并保存回新 Excel 文件的“DOI”列中。",
                     size=14,
-                    color=ft.colors.ON_SURFACE_VARIANT,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
                 ),
                 ft.Divider(height=20, thickness=1),
                 ft.ListView(
