@@ -6,6 +6,7 @@ from pathlib import Path
 import flet as ft
 
 from officekit.ui.base import BaseToolFrame, create_section_container
+from officekit.ui.file_dialogs import select_macos_file, select_macos_save_file
 from officekit.tools.doi_query.core import enrich_excel_with_doi
 
 
@@ -13,6 +14,8 @@ class DOIQueryFrame(BaseToolFrame):
     """DOI Query tool interface."""
 
     def __init__(self, page: ft.Page, **kwargs) -> None:
+        self.picker_mode: str | None = None
+
         self.file_path_field = ft.TextField(
             label="Excel 文件路径 (.xlsx)",
             hint_text="请选择 Excel 表格文件...",
@@ -76,10 +79,9 @@ class DOIQueryFrame(BaseToolFrame):
                 break
 
     def build_ui(self) -> ft.Control:
-        # File pickers
-        self.file_picker = ft.FilePicker(on_result=self.on_file_selected)
-        self.dir_picker = ft.FilePicker(on_result=self.on_output_selected)
-        self.page.overlay.extend([self.file_picker, self.dir_picker])
+        # Use a single picker with mode dispatch; macOS uses native AppleScript first.
+        self.file_picker = ft.FilePicker(on_result=self.on_picker_result)
+        self.page.overlay.append(self.file_picker)
 
         # Section 1: Files
         section_files = create_section_container(
@@ -91,9 +93,7 @@ class DOIQueryFrame(BaseToolFrame):
                         ft.IconButton(
                             icon=ft.Icons.FOLDER_OPEN_OUTLINED,
                             tooltip="浏览 Excel 文件",
-                            on_click=lambda _: self.file_picker.pick_files(
-                                allowed_extensions=["xlsx"]
-                            ),
+                            on_click=self.open_input_file_picker,
                         ),
                     ]
                 ),
@@ -103,9 +103,7 @@ class DOIQueryFrame(BaseToolFrame):
                         ft.IconButton(
                             icon=ft.Icons.DRIVE_FILE_MOVE_OUTLINED,
                             tooltip="指定另存为路径",
-                            on_click=lambda _: self.dir_picker.save_file(
-                                allowed_extensions=["xlsx"]
-                            ),
+                            on_click=self.open_output_file_picker,
                         ),
                     ]
                 ),
@@ -206,33 +204,83 @@ class DOIQueryFrame(BaseToolFrame):
             expand=True,
         )
 
+    def open_input_file_picker(self, e) -> None:
+        """Open native picker for the source Excel file."""
+        selected_path = select_macos_file(
+            "选择 Excel 表格文件",
+            allowed_extensions=["xlsx"],
+            log=self.log,
+        )
+        if selected_path is not None:
+            if selected_path:
+                self._apply_input_file_path(selected_path)
+            return
+
+        self.picker_mode = "input_file"
+        self.file_picker.pick_files(allowed_extensions=["xlsx"])
+
+    def open_output_file_picker(self, e) -> None:
+        """Open native picker for the output Excel path."""
+        selected_path = select_macos_save_file(
+            "选择 DOI 结果保存路径",
+            default_name="doi_results.xlsx",
+            log=self.log,
+        )
+        if selected_path is not None:
+            if selected_path:
+                self._apply_output_file_path(selected_path)
+            return
+
+        self.picker_mode = "output_file"
+        self.file_picker.save_file(allowed_extensions=["xlsx"], file_name="doi_results.xlsx")
+
+    def on_picker_result(self, e: ft.FilePickerResultEvent) -> None:
+        """Dispatch single FilePicker result by the requested mode."""
+        if self.picker_mode == "input_file":
+            self.on_file_selected(e)
+        elif self.picker_mode == "output_file":
+            self.on_output_selected(e)
+        self.picker_mode = None
+
     def on_file_selected(self, e: ft.FilePickerResultEvent) -> None:
         """Handle source file selection and extract sheet names."""
         if e.files and len(e.files) > 0:
-            file_path = e.files[0].path
-            self.file_path_field.value = file_path
-            self.log(f"已选择 Excel 文件: {file_path}")
+            self._apply_input_file_path(e.files[0].path)
 
-            # Extract sheet names using openpyxl
-            try:
-                import openpyxl
-                wb = openpyxl.load_workbook(file_path, read_only=True)
-                sheets = wb.sheetnames
-                wb.close()
+    def _apply_input_file_path(self, file_path: str) -> None:
+        """Apply source Excel path from any picker backend and load sheets."""
+        if not self._is_supported_excel_file(Path(file_path)):
+            self.show_dialog("文件类型不支持", "请选择 .xlsx 格式的 Excel 文件。")
+            return
 
-                self.sheet_dropdown.options = [ft.dropdown.Option(name) for name in sheets]
-                self.sheet_dropdown.value = sheets[0] if sheets else None
-                self.log(f"工作表解析成功，共找到 {len(sheets)} 个工作表")
-            except Exception as ex:
-                self.log(f"工作表解析失败: {str(ex)}", level="WARNING")
+        self.file_path_field.value = file_path
+        self.log(f"已选择 Excel 文件: {file_path}")
 
-            self.page.update()
+        # Extract sheet names using openpyxl
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(file_path, read_only=True)
+            sheets = wb.sheetnames
+            wb.close()
+
+            self.sheet_dropdown.options = [ft.dropdown.Option(name) for name in sheets]
+            self.sheet_dropdown.value = sheets[0] if sheets else None
+            self.log(f"工作表解析成功，共找到 {len(sheets)} 个工作表")
+        except Exception as ex:
+            self.log(f"工作表解析失败: {str(ex)}", level="WARNING")
+
+        self.page.update()
 
     def on_output_selected(self, e: ft.FilePickerResultEvent) -> None:
         """Handle output file path selection."""
         if e.path:
-            self.output_path_field.value = e.path
-            self.page.update()
+            self._apply_output_file_path(e.path)
+
+    def _apply_output_file_path(self, file_path: str) -> None:
+        """Apply output Excel path from any picker backend."""
+        output_path = self._normalize_excel_output_path(file_path)
+        self.output_path_field.value = output_path
+        self.page.update()
 
     def on_start_click(self, e) -> None:
         """Handle start button click."""
@@ -240,8 +288,15 @@ class DOIQueryFrame(BaseToolFrame):
         if not input_file or input_file == "请选择 Excel 表格文件...":
             self.show_dialog("警告", "请先选择一个 Excel 表格文件！")
             return
+        if not self._is_supported_excel_file(Path(input_file)):
+            self.show_dialog("文件类型不支持", "请选择 .xlsx 格式的 Excel 文件。")
+            return
 
-        out_file = self.output_path_field.value or None
+        out_file = (
+            self._normalize_excel_output_path(self.output_path_field.value)
+            if self.output_path_field.value
+            else None
+        )
         sheet_name = self.sheet_dropdown.value
 
         try:
@@ -257,6 +312,15 @@ class DOIQueryFrame(BaseToolFrame):
 
         # Run background task
         self.start_task(self.run_doi_task, input_file, out_file, sheet_name, timeout)
+
+    def _is_supported_excel_file(self, path: Path) -> bool:
+        return path.suffix.lower() == ".xlsx"
+
+    def _normalize_excel_output_path(self, file_path: str) -> str:
+        path = Path(file_path).expanduser()
+        if path.suffix.lower() != ".xlsx":
+            path = path.with_suffix(".xlsx")
+        return str(path)
 
     def run_doi_task(
         self, input_file: str, out_file: str | None, sheet_name: str | None, timeout: int

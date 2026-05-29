@@ -53,6 +53,77 @@ def test_doi_ui_file_selection_loads_sheets(mocker):
     page_mock.update.assert_called()
 
 
+def test_doi_ui_rejects_unsupported_input_file():
+    """Selecting a non-xlsx file should be rejected before workbook parsing."""
+    page_mock = MagicMock()
+    frame = DOIQueryFrame(page_mock)
+    frame.show_dialog = MagicMock()
+
+    mock_event = MagicMock()
+    mock_file = MagicMock()
+    mock_file.path = "/path/to/research.xls"
+    mock_event.files = [mock_file]
+
+    frame.on_file_selected(mock_event)
+
+    assert frame.file_path_field.value == ""
+    frame.show_dialog.assert_called_once_with("文件类型不支持", "请选择 .xlsx 格式的 Excel 文件。")
+
+
+def test_doi_ui_output_fallback_picker_opens_save_dialog(mocker):
+    """When native picker is disabled, output button should use Flet save_file."""
+    page_mock = MagicMock()
+    frame = DOIQueryFrame(page_mock)
+    mocker.patch("officekit.tools.doi_query.ui.select_macos_save_file", return_value=None)
+    frame.file_picker.save_file = MagicMock()
+
+    frame.open_output_file_picker(None)
+
+    assert frame.picker_mode == "output_file"
+    frame.file_picker.save_file.assert_called_once_with(
+        allowed_extensions=["xlsx"],
+        file_name="doi_results.xlsx",
+    )
+
+
+def test_doi_ui_output_picker_uses_macos_native_selector(mocker):
+    """On macOS, output button should use native save dialog and normalize extension."""
+    page_mock = MagicMock()
+    frame = DOIQueryFrame(page_mock)
+    mocker.patch(
+        "officekit.tools.doi_query.ui.select_macos_save_file",
+        return_value="/path/to/doi_results",
+    )
+    frame.file_picker.save_file = MagicMock()
+
+    frame.open_output_file_picker(None)
+
+    assert frame.output_path_field.value == "/path/to/doi_results.xlsx"
+    frame.file_picker.save_file.assert_not_called()
+    page_mock.update.assert_called()
+
+
+def test_doi_ui_input_picker_uses_macos_native_selector(mocker):
+    """On macOS, input button should use native file dialog and load sheet names."""
+    page_mock = MagicMock()
+    frame = DOIQueryFrame(page_mock)
+    mocker.patch(
+        "officekit.tools.doi_query.ui.select_macos_file",
+        return_value="/path/to/research.xlsx",
+    )
+    frame.file_picker.pick_files = MagicMock()
+
+    mock_wb = MagicMock()
+    mock_wb.sheetnames = ["Papers"]
+    mocker.patch("openpyxl.load_workbook", return_value=mock_wb)
+
+    frame.open_input_file_picker(None)
+
+    assert frame.file_path_field.value == "/path/to/research.xlsx"
+    assert frame.sheet_dropdown.value == "Papers"
+    frame.file_picker.pick_files.assert_not_called()
+
+
 def test_doi_ui_start_query_validation():
     """Clicking start with empty inputs should alert warning dialogue."""
     page_mock = MagicMock()
@@ -63,6 +134,18 @@ def test_doi_ui_start_query_validation():
     frame.file_path_field.value = ""
     frame.on_start_click(None)
     frame.show_dialog.assert_called_once_with("警告", "请先选择一个 Excel 表格文件！")
+
+
+def test_doi_ui_start_query_rejects_unsupported_file():
+    """Clicking start with non-xlsx path should show a file type warning."""
+    page_mock = MagicMock()
+    frame = DOIQueryFrame(page_mock)
+    frame.show_dialog = MagicMock()
+
+    frame.file_path_field.value = "/path/to/file.csv"
+    frame.on_start_click(None)
+
+    frame.show_dialog.assert_called_once_with("文件类型不支持", "请选择 .xlsx 格式的 Excel 文件。")
 
 
 def test_doi_ui_start_query_invalid_timeout():

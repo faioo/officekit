@@ -7,6 +7,7 @@ from pathlib import Path
 
 from officekit.tools.word2img.core import (
     convert_word_to_images,
+    _command_env,
     _find_command,
 )
 
@@ -49,9 +50,110 @@ def test_find_command_exists(mocker):
 def test_find_command_missing(mocker):
     """If command is not found, raise RuntimeError."""
     mocker.patch("shutil.which", return_value=None)
+    mocker.patch("officekit.tools.word2img.core.COMMON_COMMAND_PATHS", {})
     with pytest.raises(RuntimeError) as exc_info:
         _find_command("soffice", "libreoffice")
-    assert "Missing required command" in str(exc_info.value)
+    assert "缺少 Word 转图片依赖" in str(exc_info.value)
+    assert "brew install --cask libreoffice" in str(exc_info.value)
+
+
+def test_find_command_uses_common_macos_app_path(mocker, tmp_path):
+    """Finder-launched apps should still find LibreOffice in /Applications."""
+    fallback_soffice = tmp_path / "LibreOffice.app" / "Contents" / "MacOS" / "soffice"
+    fallback_soffice.parent.mkdir(parents=True)
+    fallback_soffice.write_text("mock")
+    expected_path = str(fallback_soffice)
+    mocker.patch("shutil.which", return_value=None)
+    mocker.patch(
+        "officekit.tools.word2img.core.COMMON_COMMAND_PATHS",
+        {"soffice": (expected_path,)},
+    )
+
+    result = _find_command("soffice", "libreoffice")
+
+    assert result == expected_path
+
+
+def test_find_command_prefers_bundled_libreoffice(mocker, tmp_path):
+    """Packaged apps should prefer the bundled LibreOffice binary."""
+    vendor_dir = tmp_path / "vendor"
+    bundled_soffice = vendor_dir / "LibreOffice" / "program" / "soffice.exe"
+    bundled_soffice.parent.mkdir(parents=True)
+    bundled_soffice.write_text("mock")
+
+    mocker.patch("officekit.tools.word2img.core._candidate_vendor_dirs", return_value=(vendor_dir,))
+    mocker.patch("shutil.which", return_value="/usr/bin/soffice")
+
+    result = _find_command("soffice", "libreoffice")
+
+    assert result == str(bundled_soffice)
+
+
+def test_find_command_prefers_bundled_poppler(mocker, tmp_path):
+    """Packaged apps should prefer the bundled pdftoppm binary."""
+    vendor_dir = tmp_path / "vendor"
+    bundled_pdftoppm = vendor_dir / "poppler" / "bin" / "pdftoppm"
+    bundled_pdftoppm.parent.mkdir(parents=True)
+    bundled_pdftoppm.write_text("mock")
+
+    mocker.patch("officekit.tools.word2img.core._candidate_vendor_dirs", return_value=(vendor_dir,))
+    mocker.patch("shutil.which", return_value="/usr/bin/pdftoppm")
+
+    result = _find_command("pdftoppm")
+
+    assert result == str(bundled_pdftoppm)
+
+
+def test_find_command_prefers_bundled_windows_poppler(mocker, tmp_path):
+    """Windows packaged apps should prefer bundled pdftoppm.exe."""
+    vendor_dir = tmp_path / "vendor"
+    bundled_pdftoppm = vendor_dir / "poppler" / "bin" / "pdftoppm.exe"
+    bundled_pdftoppm.parent.mkdir(parents=True)
+    bundled_pdftoppm.write_text("mock")
+
+    mocker.patch("officekit.tools.word2img.core._candidate_vendor_dirs", return_value=(vendor_dir,))
+    mocker.patch("shutil.which", return_value="/usr/bin/pdftoppm")
+
+    result = _find_command("pdftoppm")
+
+    assert result == str(bundled_pdftoppm)
+
+
+def test_command_env_adds_bundled_poppler_lib_path(tmp_path):
+    """Bundled pdftoppm should receive a local DYLD_LIBRARY_PATH."""
+    pdftoppm = tmp_path / "vendor" / "poppler" / "bin" / "pdftoppm"
+    lib_dir = tmp_path / "vendor" / "poppler" / "lib"
+    pdftoppm.parent.mkdir(parents=True)
+    lib_dir.mkdir(parents=True)
+    pdftoppm.write_text("mock")
+
+    env = _command_env(str(pdftoppm))
+
+    assert env is not None
+    assert str(lib_dir) in env["DYLD_LIBRARY_PATH"]
+
+
+def test_command_env_adds_bundled_poppler_bin_to_path(tmp_path):
+    """Bundled Windows pdftoppm should receive its local bin directory on PATH."""
+    pdftoppm = tmp_path / "vendor" / "poppler" / "bin" / "pdftoppm.exe"
+    pdftoppm.parent.mkdir(parents=True)
+    pdftoppm.write_text("mock")
+
+    env = _command_env(str(pdftoppm))
+
+    assert env is not None
+    assert str(pdftoppm.parent) in env["PATH"]
+
+
+def test_find_command_missing_pdftoppm_includes_poppler_hint(mocker):
+    """Missing pdftoppm should tell users how to install Poppler."""
+    mocker.patch("shutil.which", return_value=None)
+    mocker.patch("officekit.tools.word2img.core.COMMON_COMMAND_PATHS", {})
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _find_command("pdftoppm")
+
+    assert "brew install poppler" in str(exc_info.value)
 
 
 def test_convert_word_to_images_successful_flow(mocker, tmp_path):

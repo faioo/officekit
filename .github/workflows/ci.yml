@@ -60,6 +60,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install macOS vendor tools
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install --cask libreoffice
+          brew install poppler
+
+      - name: Install Windows vendor tools
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install libreoffice-fresh poppler -y --no-progress
+
       - name: Package Application
         run: |
           python build_app.py --platform ${{ matrix.platform }}
@@ -68,8 +79,8 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          # Copy Windows executable to with version name
-          cp dist/OfficeKit.exe dist/OfficeKit_Windows_${{ github.ref_name }}.exe
+          # Rename Windows full ZIP to release version tag
+          mv dist/OfficeKit_Windows_v0.1.0.zip dist/OfficeKit_Windows_${{ github.ref_name }}.zip
 
       - name: Prepare macOS upload artifact name
         if: matrix.os == 'macos-latest'
@@ -82,7 +93,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/OfficeKit_Windows_*.exe
+            dist/OfficeKit_Windows_*.zip
             dist/OfficeKit_macOS_*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

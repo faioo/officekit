@@ -62,6 +62,46 @@ def test_word2img_ui_multiple_files_selection():
     page_mock.update.assert_called()
 
 
+def test_word2img_ui_rejects_unsupported_file_selection():
+    """Unsupported files should not be accepted even if a picker returns them."""
+    page_mock = MagicMock()
+    frame = Word2ImgFrame(page_mock)
+    frame.show_dialog = MagicMock()
+
+    mock_event = MagicMock()
+    mock_file = MagicMock()
+    mock_file.path = "/path/to/not-word.pdf"
+    mock_event.files = [mock_file]
+
+    frame.on_files_selected(mock_event)
+
+    assert frame.selected_files == []
+    frame.show_dialog.assert_called_once_with(
+        "文件类型不支持",
+        "请选择 .doc 或 .docx 格式的 Word 文档。",
+    )
+
+
+def test_word2img_ui_ignores_invalid_files_from_mixed_selection():
+    """Mixed selections should keep valid Word documents and warn about invalid files."""
+    page_mock = MagicMock()
+    frame = Word2ImgFrame(page_mock)
+    frame.show_dialog = MagicMock()
+
+    mock_event = MagicMock()
+    valid_file = MagicMock()
+    valid_file.path = "/path/to/file1.docx"
+    invalid_file = MagicMock()
+    invalid_file.path = "/path/to/file2.pdf"
+    mock_event.files = [valid_file, invalid_file]
+
+    frame.on_files_selected(mock_event)
+
+    assert frame.selected_files == ["/path/to/file1.docx"]
+    assert frame.file_path_field.value == "/path/to/file1.docx"
+    frame.show_dialog.assert_called_once()
+
+
 def test_word2img_ui_folder_selection():
     """Selecting an input directory should reset files list and update folder variable."""
     page_mock = MagicMock()
@@ -76,6 +116,55 @@ def test_word2img_ui_folder_selection():
     assert frame.selected_files == []
     assert frame.file_path_field.value == "已选择文件夹: /path/to/word_folder"
     page_mock.update.assert_called()
+
+
+def test_word2img_ui_output_picker_opens_directory_selector(mocker):
+    """Output button should open a directory picker instead of a file picker."""
+    page_mock = MagicMock()
+    frame = Word2ImgFrame(page_mock)
+    mocker.patch("officekit.tools.word2img.ui.select_macos_directory", return_value=None)
+    frame.file_picker.get_directory_path = MagicMock()
+
+    frame.open_output_dir_picker(None)
+
+    assert frame.picker_mode == "output_dir"
+    frame.file_picker.get_directory_path.assert_called_once_with()
+
+
+def test_word2img_ui_output_picker_uses_macos_native_selector(mocker):
+    """On macOS, output button should use the native AppleScript directory selector."""
+    page_mock = MagicMock()
+    frame = Word2ImgFrame(page_mock)
+    mocker.patch(
+        "officekit.tools.word2img.ui.select_macos_directory",
+        return_value="/path/to/output_images",
+    )
+    frame.file_picker.get_directory_path = MagicMock()
+
+    frame.open_output_dir_picker(None)
+
+    assert frame.output_dir_field.value == "/path/to/output_images"
+    frame.file_picker.get_directory_path.assert_not_called()
+    page_mock.update.assert_called()
+
+
+def test_word2img_ui_input_files_picker_uses_macos_native_selector(mocker):
+    """On macOS, the input file option should use native picker and still validate file types."""
+    page_mock = MagicMock()
+    frame = Word2ImgFrame(page_mock)
+    mocker.patch(
+        "officekit.tools.word2img.ui.select_macos_files",
+        return_value=["/path/to/file1.docx", "/path/to/file2.pdf"],
+    )
+    frame.show_dialog = MagicMock()
+    frame.file_picker.pick_files = MagicMock()
+
+    frame.open_input_files_picker()
+
+    assert frame.selected_files == ["/path/to/file1.docx"]
+    assert frame.file_path_field.value == "/path/to/file1.docx"
+    frame.file_picker.pick_files.assert_not_called()
+    frame.show_dialog.assert_called_once()
 
 
 def test_word2img_ui_output_selection():
