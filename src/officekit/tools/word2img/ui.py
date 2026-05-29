@@ -104,12 +104,12 @@ class Word2ImgFrame(BaseToolFrame):
         # Actions
         self.run_btn = ft.ElevatedButton(
             "▶ 开始转换",
-            bgcolor=ft.Colors.GREEN,
-            color=ft.Colors.WHITE,
+            bgcolor=ft.colors.GREEN,
+            color=ft.colors.WHITE,
             on_click=self.on_start_click,
             expand=True,
         )
-        self.progress_bar = ft.ProgressBar(value=0.0, expand=True, color=ft.Colors.GREEN)
+        self.progress_bar = ft.ProgressBar(value=0.0, expand=True, color=ft.colors.GREEN)
         self.progress_text = ft.Text("状态: 已就绪", size=13, italic=True)
 
         section_actions = create_section_container(
@@ -130,7 +130,7 @@ class Word2ImgFrame(BaseToolFrame):
             text_size=12,
             font_family="monospace",
             hint_text="处理日志将在此显示...",
-            border_color=ft.Colors.OUTLINE_VARIANT,
+            border_color=ft.colors.OUTLINE_VARIANT,
         )
 
         section_log = create_section_container("4. 处理日志", [self.log_area])
@@ -146,7 +146,7 @@ class Word2ImgFrame(BaseToolFrame):
         return ft.Column(
             controls=[
                 ft.Text("Word 文档转图片", size=22, weight=ft.FontWeight.BOLD),
-                ft.Text("将 Word 文档 (.doc / .docx) 的每一页自动转换为高清 PNG 或 JPEG 图片。", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text("将 Word 文档 (.doc / .docx) 的每一页自动转换为高清 PNG 或 JPEG 图片。", size=14, color=ft.colors.ON_SURFACE_VARIANT),
                 ft.Divider(height=20, thickness=1),
                 ft.ListView(
                     controls=[

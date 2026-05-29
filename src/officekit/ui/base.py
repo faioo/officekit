@@ -106,13 +106,13 @@ def create_section_container(title: str, controls: list[ft.Control]) -> ft.Conta
     return ft.Container(
         content=ft.Column(
             controls=[
-                ft.Text(title, size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.PRIMARY),
+                ft.Text(title, size=16, weight=ft.FontWeight.BOLD, color=ft.colors.PRIMARY),
                 ft.Divider(height=1, thickness=1),
                 *controls,
             ],
             spacing=10,
         ),
-        bgcolor=ft.Colors.SURFACE_VARIANT,
+        bgcolor=ft.colors.SURFACE_VARIANT,
         border_radius=8,
         padding=15,
         margin=ft.margin.only(bottom=15),
