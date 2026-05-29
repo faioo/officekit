@@ -1,0 +1,64 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+# Usually these files are written by a python script, but are local build artifacts
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nosetests
+.pytest_cache/
+v/
+.cov*
+
+# Environments and virtualenvs
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.all/
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Flet local storage & client cache
+.flet/
+
+# Cursor local config / cache (excluding general settings if needed)
+.cursor/crepe/
+agent-transcripts/

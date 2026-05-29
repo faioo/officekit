@@ -1,0 +1,88 @@
+name: CI and Automated Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Code Quality and Lint Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run syntax compile validation
+        run: |
+          python -m py_compile src/officekit/*.py src/officekit/ui/*.py src/officekit/tools/word2img/*.py src/officekit/tools/doi_query/*.py
+
+  build:
+    name: Build & Release Desktop App
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip upgrade pip
+          pip install -r requirements.txt
+
+      - name: Package Application
+        run: |
+          python build_app.py --platform ${{ matrix.platform }}
+
+      - name: Prepare Windows upload artifact name
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          # Copy Windows executable to with version name
+          cp dist/OfficeKit.exe dist/OfficeKit_Windows_${{ github.ref_name }}.exe
+
+      - name: Prepare macOS upload artifact name
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          # Rename Zip to release version tag
+          mv dist/OfficeKit_macOS_v0.1.0.zip dist/OfficeKit_macOS_${{ github.ref_name }}.zip
+
+      - name: Upload binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/OfficeKit_Windows_*.exe
+            dist/OfficeKit_macOS_*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

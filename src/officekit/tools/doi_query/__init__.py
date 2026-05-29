@@ -1,0 +1,1 @@
+"""DOI query tool."""
