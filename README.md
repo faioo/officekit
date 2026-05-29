@@ -116,6 +116,7 @@ brew install poppler
 1. **持续集成 (CI - 跑测)**：每次有新的 Commit 推送 (Push) 到 `main` 分支或提交 Pull Request 时，Pipeline 会自动拉起 Ubuntu 环境，自动检查全部源码是否存在 Python 语法与编译错误，确保代码时刻健康。
 2. **自动分发打包 (CD - Release 自动化发布)**：
    - 当你在本地通过 Git 触发版本 Tag 推送（例如 `git tag v0.1.0 && git push origin v0.1.0`）时，GitHub Pipeline 会自动通过 `matrix` 分别拉起 **macOS (macos-latest)** 和 **Windows (windows-latest)** 虚拟机运行打包工作。
+   - 也可以在 GitHub 的 **Actions → CI and Automated Build → Run workflow** 手动触发打包，输入版本号（如 `v0.1.3`），并选择是否构建 macOS 或 Windows。
    - 打包完成后，Pipeline 会自动将编译产物命名为带有具体版本号的文件（如 `OfficeKit_Windows_v0.1.0.zip` 和 `OfficeKit_macOS_v0.1.0.zip`）。
    - 最后，Pipeline 会调用 GitHub API 自动创建一个对应的 Release，并将这两个开箱即用的包作为 Release 的附件**自动发布**！非技术人员可以直接在 GitHub 的 "Releases" 栏目下一键下载最新版运行！
 
