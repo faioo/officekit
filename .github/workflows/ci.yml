@@ -26,12 +26,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run syntax compile validation
+      - name: Run Pytest suite
         run: |
-          python -m py_compile src/officekit/*.py src/officekit/ui/*.py src/officekit/tools/word2img/*.py src/officekit/tools/doi_query/*.py
+          PYTHONPATH=src pytest
 
   build:
     name: Build & Release Desktop App
@@ -57,7 +57,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Package Application
