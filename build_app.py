@@ -16,6 +16,12 @@ MACOS_LIBREOFFICE_APP_PATHS = [
     Path.home() / "Applications" / "LibreOffice.app",
 ]
 MACOS_POPPLER_BINARY_NAMES = ["pdftoppm", "pdfinfo"]
+MACOS_VENDOR_DEPENDENCY_PREFIXES = ("/opt/homebrew/", "/usr/local/", "/opt/local/")
+MACOS_FALLBACK_LIBRARY_DIRS = (
+    Path("/opt/homebrew/lib"),
+    Path("/usr/local/lib"),
+    Path("/opt/local/lib"),
+)
 MACOS_VENDOR_WARNING = (
     "macOS vendor dependencies were not fully bundled. "
     "Install LibreOffice and Poppler on the build machine for a self-contained app."
@@ -128,6 +134,7 @@ def build_desktop_app(target_platform: str) -> None:
         "OfficeKit 办公自动化轻量客户端",
         "--copyright",
         "Copyright 2026 OfficeKit",
+        "-y",
     ]
 
     # Platform-specific options
@@ -142,7 +149,6 @@ def build_desktop_app(target_platform: str) -> None:
     elif target_platform == "win":
         # Windows: Pack into a clean single executable file
         log("Configuring Windows single file .exe packaging...")
-        pack_args.append("-y")  # Answer yes to overwrite
     else:
         log("Configuring Linux standalone packaging...")
 
@@ -255,6 +261,11 @@ def bundle_macos_poppler(vendor_dir: Path) -> bool:
         set_macos_dylib_id(library)
         rewrite_macos_dylib_references(library, "@loader_path")
 
+    for library in copied_libraries.values():
+        codesign_macos_file(library)
+    for binary in copied_binaries:
+        codesign_macos_file(binary)
+
     return (bin_dir / "pdftoppm").exists()
 
 
@@ -265,14 +276,15 @@ def copy_macos_dylib_dependencies(
 ) -> None:
     """Recursively copy non-system dylib dependencies used by a Mach-O file."""
     for dependency in list_macos_dylib_dependencies(binary_path):
-        if not should_bundle_macos_dependency(dependency):
+        dependency_path = resolve_macos_dependency_path(dependency, binary_path)
+        if not dependency_path or not should_bundle_macos_dependency_path(dependency_path):
             continue
-        dependency_path = Path(dependency)
         destination = lib_dir / dependency_path.name
-        if dependency not in copied_libraries:
+        dependency_key = str(dependency_path)
+        if dependency_key not in copied_libraries:
             log(f"Bundling dylib dependency: {dependency_path}")
             shutil.copy2(dependency_path, destination)
-            copied_libraries[dependency] = destination
+            copied_libraries[dependency_key] = destination
             copy_macos_dylib_dependencies(destination, lib_dir, copied_libraries)
 
 
@@ -292,19 +304,71 @@ def list_macos_dylib_dependencies(binary_path: Path) -> list[str]:
     return dependencies
 
 
-def should_bundle_macos_dependency(dependency: str) -> bool:
-    """Bundle Homebrew/MacPorts dylibs, but leave system and relative libs alone."""
-    if dependency.startswith(("@", "/usr/lib/", "/System/Library/")):
-        return False
-    return dependency.startswith(("/opt/homebrew/", "/usr/local/", "/opt/local/"))
+def list_macos_rpaths(binary_path: Path) -> list[str]:
+    """Return LC_RPATH entries from a Mach-O file."""
+    result = subprocess.run(
+        ["otool", "-l", str(binary_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    rpaths = []
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("path "):
+            rpaths.append(stripped.split(" ", 2)[1])
+    return rpaths
+
+
+def resolve_macos_dependency_path(dependency: str, binary_path: Path) -> Path | None:
+    """Resolve absolute and @rpath/@loader_path dylib references to real files."""
+    if dependency.startswith("@rpath/"):
+        relative_name = dependency.removeprefix("@rpath/")
+        first_existing_candidate: Path | None = None
+        for rpath in list_macos_rpaths(binary_path):
+            candidate = expand_macos_runtime_path(rpath, binary_path) / relative_name
+            if candidate.exists():
+                resolved_candidate = candidate.resolve()
+                if should_bundle_macos_dependency_path(resolved_candidate):
+                    return resolved_candidate
+                first_existing_candidate = first_existing_candidate or resolved_candidate
+        for library_dir in MACOS_FALLBACK_LIBRARY_DIRS:
+            candidate = library_dir / relative_name
+            if candidate.exists():
+                return candidate.resolve()
+        return first_existing_candidate
+
+    if dependency.startswith(("@loader_path/", "@executable_path/")):
+        candidate = expand_macos_runtime_path(dependency, binary_path)
+        return candidate.resolve() if candidate.exists() else None
+
+    dependency_path = Path(dependency)
+    return dependency_path.resolve() if dependency_path.exists() else None
+
+
+def expand_macos_runtime_path(reference: str, binary_path: Path) -> Path:
+    """Expand Mach-O runtime path tokens relative to the current file."""
+    if reference.startswith("@loader_path"):
+        suffix = reference.removeprefix("@loader_path").lstrip("/")
+        return binary_path.parent / suffix
+    if reference.startswith("@executable_path"):
+        suffix = reference.removeprefix("@executable_path").lstrip("/")
+        return binary_path.parent / suffix
+    return Path(reference)
+
+
+def should_bundle_macos_dependency_path(dependency_path: Path) -> bool:
+    """Return whether a resolved dylib path should be copied into the app."""
+    return str(dependency_path).startswith(MACOS_VENDOR_DEPENDENCY_PREFIXES)
 
 
 def rewrite_macos_dylib_references(binary_path: Path, relative_lib_prefix: str) -> None:
     """Rewrite bundled dylib references to point at the app-local vendor lib dir."""
     for dependency in list_macos_dylib_dependencies(binary_path):
-        if not should_bundle_macos_dependency(dependency):
+        dependency_path = resolve_macos_dependency_path(dependency, binary_path)
+        if not dependency_path or not should_bundle_macos_dependency_path(dependency_path):
             continue
-        new_reference = f"{relative_lib_prefix}/{Path(dependency).name}"
+        new_reference = f"{relative_lib_prefix}/{dependency_path.name}"
         subprocess.run(
             ["install_name_tool", "-change", dependency, new_reference, str(binary_path)],
             check=True,
@@ -319,18 +383,25 @@ def set_macos_dylib_id(library_path: Path) -> None:
     )
 
 
+def codesign_macos_file(path: Path) -> None:
+    """Ad-hoc sign a bundled Mach-O file after install_name_tool mutations."""
+    subprocess.run(
+        ["codesign", "--force", "--sign", "-", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def codesign_macos_app(app_path: Path) -> None:
     """Ad-hoc re-sign the bundle after adding vendor files to avoid stale signatures."""
-    try:
-        subprocess.run(
-            ["codesign", "--force", "--deep", "--sign", "-", str(app_path)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        log("Ad-hoc codesigned macOS app after bundling vendor dependencies.")
-    except (FileNotFoundError, subprocess.CalledProcessError) as error:
-        log(f"Warning: codesign failed or is unavailable: {error}")
+    subprocess.run(
+        ["codesign", "--force", "--deep", "--sign", "-", str(app_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    log("Ad-hoc codesigned macOS app after bundling vendor dependencies.")
 
 
 def create_windows_full_archive(dist_dir: Path, exe_path: Path) -> Path:
@@ -341,7 +412,9 @@ def create_windows_full_archive(dist_dir: Path, exe_path: Path) -> Path:
     package_dir.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(exe_path, package_dir / exe_path.name)
-    bundle_windows_vendor_dependencies(package_dir / "vendor")
+    vendor_dir = package_dir / "vendor"
+    bundle_windows_vendor_dependencies(vendor_dir)
+    validate_windows_vendor_dependencies(vendor_dir)
 
     archive_name = dist_dir / "OfficeKit_Windows_v0.1.0"
     shutil.make_archive(str(archive_name), "zip", root_dir=str(dist_dir), base_dir=package_dir.name)
@@ -358,7 +431,7 @@ def bundle_windows_vendor_dependencies(vendor_dir: Path) -> None:
     if libreoffice_ok and poppler_ok:
         log("Bundled Windows Word conversion vendor dependencies successfully.")
     else:
-        log(f"Warning: {WINDOWS_VENDOR_WARNING}")
+        raise RuntimeError(WINDOWS_VENDOR_WARNING)
 
 
 def bundle_windows_libreoffice(vendor_dir: Path) -> bool:
@@ -390,7 +463,29 @@ def bundle_windows_poppler(vendor_dir: Path) -> bool:
 
     log(f"Bundling Windows Poppler from: {source_root}")
     shutil.copytree(source_root, destination_root, symlinks=True)
-    return (destination_root / "bin" / "pdftoppm.exe").exists()
+    return find_bundled_windows_pdftoppm(vendor_dir) is not None
+
+
+def find_bundled_windows_pdftoppm(vendor_dir: Path) -> Path | None:
+    """Find pdftoppm.exe in normalized and Chocolatey Library layouts."""
+    candidates = (
+        vendor_dir / "poppler" / "bin" / "pdftoppm.exe",
+        vendor_dir / "poppler" / "Library" / "bin" / "pdftoppm.exe",
+    )
+    return next((candidate for candidate in candidates if candidate.exists()), None)
+
+
+def validate_windows_vendor_dependencies(vendor_dir: Path) -> None:
+    """Fail packaging if the Windows release would be missing conversion tools."""
+    missing = []
+    if not (vendor_dir / "LibreOffice" / "program" / "soffice.exe").exists():
+        missing.append("vendor/LibreOffice/program/soffice.exe")
+    if not find_bundled_windows_pdftoppm(vendor_dir):
+        missing.append("vendor/poppler/bin/pdftoppm.exe")
+
+    if missing:
+        missing_text = ", ".join(missing)
+        raise RuntimeError(f"Windows vendor dependencies are incomplete: missing {missing_text}.")
 
 
 def find_windows_poppler_root() -> Path | None:

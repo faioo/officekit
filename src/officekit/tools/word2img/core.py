@@ -120,6 +120,7 @@ def _bundled_command_paths(name: str) -> tuple[Path, ...]:
         elif name == "pdftoppm":
             candidates.append(vendor_dir / "poppler" / "bin" / "pdftoppm")
             candidates.append(vendor_dir / "poppler" / "bin" / "pdftoppm.exe")
+            candidates.append(vendor_dir / "poppler" / "Library" / "bin" / "pdftoppm.exe")
     return tuple(candidates)
 
 
@@ -165,6 +166,13 @@ def _missing_command_message(names: tuple[str, ...]) -> str:
             "未找到 Poppler/pdftoppm。macOS 可执行：`brew install poppler`；"
             "Windows 可执行：`choco install poppler -y`。"
         )
+        bundled_paths = "\n".join(f"- {path}" for path in _bundled_command_paths("pdftoppm"))
+        if bundled_paths:
+            hints.append(
+                "已检查内置 Poppler 路径：\n"
+                f"{bundled_paths}\n"
+                f"当前 Python 可执行文件：{sys.executable}"
+            )
 
     hint_text = "\n".join(hints) if hints else "请安装对应命令后重试。"
     return f"缺少 Word 转图片依赖: 未找到 {missing_commands}。\n{hint_text}"

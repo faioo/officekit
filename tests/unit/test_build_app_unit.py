@@ -64,7 +64,10 @@ def test_create_windows_full_archive_includes_exe_and_vendor_dir(mocker, tmp_pat
     exe_path.write_text("mock exe")
 
     def fake_bundle(vendor_dir):
-        vendor_dir.mkdir(parents=True)
+        (vendor_dir / "LibreOffice" / "program").mkdir(parents=True)
+        (vendor_dir / "LibreOffice" / "program" / "soffice.exe").write_text("mock soffice")
+        (vendor_dir / "poppler" / "bin").mkdir(parents=True)
+        (vendor_dir / "poppler" / "bin" / "pdftoppm.exe").write_text("mock pdftoppm")
         (vendor_dir / "marker.txt").write_text("vendor")
 
     mocker.patch.object(build_app, "bundle_windows_vendor_dependencies", side_effect=fake_bundle)
@@ -77,3 +80,116 @@ def test_create_windows_full_archive_includes_exe_and_vendor_dir(mocker, tmp_pat
 
     assert "OfficeKit_Windows_v0.1.0/OfficeKit.exe" in names
     assert "OfficeKit_Windows_v0.1.0/vendor/marker.txt" in names
+    assert "OfficeKit_Windows_v0.1.0/vendor/poppler/bin/pdftoppm.exe" in names
+
+
+def test_create_windows_full_archive_fails_without_poppler(mocker, tmp_path):
+    """Windows release archives should not be created when Poppler is missing."""
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    exe_path = dist_dir / "OfficeKit.exe"
+    exe_path.write_text("mock exe")
+
+    def fake_bundle(vendor_dir):
+        (vendor_dir / "LibreOffice" / "program").mkdir(parents=True)
+        (vendor_dir / "LibreOffice" / "program" / "soffice.exe").write_text("mock soffice")
+
+    mocker.patch.object(build_app, "bundle_windows_vendor_dependencies", side_effect=fake_bundle)
+
+    try:
+        build_app.create_windows_full_archive(dist_dir, exe_path)
+    except RuntimeError as error:
+        assert "pdftoppm.exe" in str(error)
+    else:
+        raise AssertionError("Expected missing Poppler to fail the Windows archive build")
+
+
+def test_copy_macos_dylib_dependencies_resolves_rpath_dependencies(mocker, tmp_path):
+    """Homebrew Poppler links libpoppler through @rpath and must still be bundled."""
+    homebrew_root = tmp_path / "homebrew"
+    binary = homebrew_root / "bin" / "pdftoppm"
+    poppler_lib = homebrew_root / "lib" / "libpoppler.159.dylib"
+    binary.parent.mkdir(parents=True)
+    poppler_lib.parent.mkdir(parents=True)
+    binary.write_text("mock binary")
+    poppler_lib.write_text("mock lib")
+
+    mocker.patch.object(build_app, "MACOS_VENDOR_DEPENDENCY_PREFIXES", (str(homebrew_root),))
+    mocker.patch.object(
+        build_app,
+        "list_macos_dylib_dependencies",
+        side_effect=lambda path: ["@rpath/libpoppler.159.dylib"] if Path(path) == binary else [],
+    )
+    mocker.patch.object(build_app, "list_macos_rpaths", return_value=[str(homebrew_root / "lib")])
+
+    copied_libraries: dict[str, Path] = {}
+    vendor_lib_dir = tmp_path / "vendor" / "poppler" / "lib"
+    vendor_lib_dir.mkdir(parents=True)
+
+    build_app.copy_macos_dylib_dependencies(binary, vendor_lib_dir, copied_libraries)
+
+    assert (vendor_lib_dir / "libpoppler.159.dylib").exists()
+
+
+def test_rewrite_macos_dylib_references_rewrites_rpath_dependencies(mocker, tmp_path):
+    """install_name_tool should point @rpath Poppler dependencies at the bundled lib dir."""
+    homebrew_root = tmp_path / "homebrew"
+    binary = homebrew_root / "bin" / "pdftoppm"
+    poppler_lib = homebrew_root / "lib" / "libpoppler.159.dylib"
+    binary.parent.mkdir(parents=True)
+    poppler_lib.parent.mkdir(parents=True)
+    binary.write_text("mock binary")
+    poppler_lib.write_text("mock lib")
+
+    mocker.patch.object(build_app, "MACOS_VENDOR_DEPENDENCY_PREFIXES", (str(homebrew_root),))
+    mocker.patch.object(build_app, "list_macos_dylib_dependencies", return_value=["@rpath/libpoppler.159.dylib"])
+    mocker.patch.object(build_app, "list_macos_rpaths", return_value=[str(homebrew_root / "lib")])
+    run = mocker.patch.object(build_app.subprocess, "run")
+
+    build_app.rewrite_macos_dylib_references(binary, "@executable_path/../lib")
+
+    run.assert_called_once_with(
+        [
+            "install_name_tool",
+            "-change",
+            "@rpath/libpoppler.159.dylib",
+            "@executable_path/../lib/libpoppler.159.dylib",
+            str(binary),
+        ],
+        check=True,
+    )
+
+
+def test_bundle_macos_poppler_codesigns_binaries_and_libraries(mocker, tmp_path):
+    """Mutated bundled Poppler files should be re-signed before the app is archived."""
+    homebrew_root = tmp_path / "homebrew"
+    source_bin = homebrew_root / "bin"
+    source_lib = homebrew_root / "lib"
+    source_bin.mkdir(parents=True)
+    source_lib.mkdir(parents=True)
+    for binary_name in build_app.MACOS_POPPLER_BINARY_NAMES:
+        (source_bin / binary_name).write_text("mock binary")
+    (source_lib / "libpoppler.159.dylib").write_text("mock lib")
+
+    mocker.patch.object(build_app, "MACOS_VENDOR_DEPENDENCY_PREFIXES", (str(homebrew_root),))
+    mocker.patch.object(
+        build_app.shutil,
+        "which",
+        side_effect=lambda name: str(source_bin / name) if (source_bin / name).exists() else None,
+    )
+    mocker.patch.object(
+        build_app,
+        "list_macos_dylib_dependencies",
+        side_effect=lambda path: ["@rpath/libpoppler.159.dylib"]
+        if Path(path).name in build_app.MACOS_POPPLER_BINARY_NAMES
+        else [],
+    )
+    mocker.patch.object(build_app, "list_macos_rpaths", return_value=[str(source_lib)])
+    mocker.patch.object(build_app.subprocess, "run")
+    codesign = mocker.patch.object(build_app, "codesign_macos_file")
+
+    result = build_app.bundle_macos_poppler(tmp_path / "vendor")
+
+    assert result is True
+    signed_names = {call.args[0].name for call in codesign.call_args_list}
+    assert {"pdftoppm", "pdfinfo", "libpoppler.159.dylib"}.issubset(signed_names)

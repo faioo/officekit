@@ -119,6 +119,22 @@ def test_find_command_prefers_bundled_windows_poppler(mocker, tmp_path):
     assert result == str(bundled_pdftoppm)
 
 
+def test_find_command_accepts_bundled_windows_poppler_library_layout(mocker, tmp_path):
+    """Older Windows bundles may keep Chocolatey's Library/bin Poppler layout."""
+    vendor_dir = tmp_path / "vendor"
+    bundled_pdftoppm = vendor_dir / "poppler" / "Library" / "bin" / "pdftoppm.exe"
+    bundled_pdftoppm.parent.mkdir(parents=True)
+    bundled_pdftoppm.write_text("mock")
+
+    mocker.patch("officekit.tools.word2img.core._candidate_vendor_dirs", return_value=(vendor_dir,))
+    mocker.patch("shutil.which", return_value=None)
+    mocker.patch("officekit.tools.word2img.core.COMMON_COMMAND_PATHS", {})
+
+    result = _find_command("pdftoppm")
+
+    assert result == str(bundled_pdftoppm)
+
+
 def test_command_env_adds_bundled_poppler_lib_path(tmp_path):
     """Bundled pdftoppm should receive a local DYLD_LIBRARY_PATH."""
     pdftoppm = tmp_path / "vendor" / "poppler" / "bin" / "pdftoppm"
@@ -154,6 +170,21 @@ def test_find_command_missing_pdftoppm_includes_poppler_hint(mocker):
         _find_command("pdftoppm")
 
     assert "brew install poppler" in str(exc_info.value)
+
+
+def test_find_command_missing_pdftoppm_lists_checked_vendor_paths(mocker, tmp_path):
+    """Missing Poppler errors should point users at the bundled paths that were checked."""
+    vendor_dir = tmp_path / "vendor"
+    mocker.patch("officekit.tools.word2img.core._candidate_vendor_dirs", return_value=(vendor_dir,))
+    mocker.patch("shutil.which", return_value=None)
+    mocker.patch("officekit.tools.word2img.core.COMMON_COMMAND_PATHS", {})
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _find_command("pdftoppm")
+
+    message = str(exc_info.value)
+    assert str(vendor_dir / "poppler" / "bin" / "pdftoppm.exe") in message
+    assert str(vendor_dir / "poppler" / "Library" / "bin" / "pdftoppm.exe") in message
 
 
 def test_convert_word_to_images_successful_flow(mocker, tmp_path):
