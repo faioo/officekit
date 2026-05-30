@@ -93,8 +93,30 @@ jobs:
 
       - name: Install Windows vendor tools
         if: matrix.os == 'windows-latest' && (github.event_name != 'workflow_dispatch' || inputs.build_windows)
+        shell: pwsh
         run: |
-          choco install libreoffice-fresh poppler -y --no-progress
+          choco install libreoffice-fresh -y --no-progress
+
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/oschwartz10612/poppler-windows/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -match '^Release-.*\.zip$' } | Select-Object -First 1
+          if (-not $asset) {
+            throw "Could not find a Poppler Windows release zip asset."
+          }
+
+          $archive = Join-Path $env:RUNNER_TEMP "poppler.zip"
+          $extractDir = Join-Path $env:RUNNER_TEMP "poppler"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extractDir -Force
+
+          $pdftoppm = Get-ChildItem -Path $extractDir -Recurse -Filter "pdftoppm.exe" | Select-Object -First 1
+          if (-not $pdftoppm) {
+            throw "Downloaded Poppler archive did not contain pdftoppm.exe."
+          }
+
+          $popplerRoot = $pdftoppm.Directory.Parent.FullName
+          "POPPLER_HOME=$popplerRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $pdftoppm.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Append
+          & $pdftoppm.FullName -v
 
       - name: Package Application
         if: github.event_name != 'workflow_dispatch' || (matrix.platform == 'mac' && inputs.build_macos) || (matrix.platform == 'win' && inputs.build_windows)
