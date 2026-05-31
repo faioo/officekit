@@ -26,7 +26,7 @@ class Word2ImgFrame(BaseToolFrame):
             read_only=True,
         )
         self.output_dir_field = ft.TextField(
-            label="图片输出目录 (留空则默认在各文档同级创建目录)",
+            label="图片输出目录 (留空则输出到各文档同级目录)",
             hint_text="点击右侧图标选择输出目录...",
             expand=True,
             read_only=True,

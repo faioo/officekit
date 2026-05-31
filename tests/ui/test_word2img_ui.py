@@ -16,6 +16,7 @@ def test_word2img_ui_initialization():
     frame = Word2ImgFrame(page_mock)
 
     assert frame.file_path_field.label == "输入 Word 文件或文件夹"
+    assert frame.output_dir_field.label == "图片输出目录 (留空则输出到各文档同级目录)"
     assert frame.file_path_field.read_only is True
     assert frame.dpi_dropdown.value == "150"
     assert frame.format_radio.value == "png"

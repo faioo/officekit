@@ -11,7 +11,7 @@ from officekit.tools.doi_query.core import enrich_excel_with_doi
 def run_interactive() -> None:
     """Prompt for options and run DOI enrichment."""
     input_path = input("请输入 Excel 文件路径：").strip()
-    output_path = input("请输入输出文件路径（留空则自动生成）：").strip() or None
+    output_path = input("请输入输出文件路径（留空则在同级生成 _with_doi.xlsx 文件）：").strip() or None
     sheet_name = input("请输入工作表名称（留空则使用当前活动表）：").strip() or None
 
     summary = enrich_excel_with_doi(input_path, output_path, sheet_name=sheet_name)

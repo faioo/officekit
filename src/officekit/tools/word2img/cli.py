@@ -11,7 +11,7 @@ from officekit.tools.word2img.core import convert_word_to_images
 def run_interactive() -> None:
     """Prompt for conversion options and run the Word to image tool."""
     input_path = input("请输入 Word 文档路径：").strip()
-    output_dir = input("请输入图片输出目录（留空则自动创建）：").strip() or None
+    output_dir = input("请输入图片输出目录（留空则输出到文档同级目录）：").strip() or None
 
     images = convert_word_to_images(input_path, output_dir)
     print(f"已生成 {len(images)} 张图片：")

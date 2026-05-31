@@ -5,8 +5,10 @@ from __future__ import annotations
 import pytest
 from unittest.mock import MagicMock
 import requests
+import openpyxl
 
 from officekit.tools.doi_query.core import (
+    enrich_excel_with_doi,
     query_doi,
     _find_column,
     _find_columns,
@@ -101,3 +103,22 @@ def test_find_columns_missing():
     with pytest.raises(ValueError) as exc_info:
         _find_columns(headers)
     assert "missing required columns: Year" in str(exc_info.value)
+
+
+def test_enrich_excel_defaults_to_sibling_with_doi_file(mocker, tmp_path):
+    """Default output should be a sibling workbook, not a new directory."""
+    input_xlsx = tmp_path / "papers.xlsx"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append(["Title", "Journal", "Year"])
+    sheet.append(["A Sample Paper", "Journal of Testing", "2026"])
+    workbook.save(input_xlsx)
+    workbook.close()
+
+    mocker.patch("officekit.tools.doi_query.core.query_doi", return_value="10.1000/example")
+
+    summary = enrich_excel_with_doi(input_xlsx)
+
+    assert summary.output_path == tmp_path / "papers_with_doi.xlsx"
+    assert summary.output_path.exists()
+    assert not (tmp_path / "papers_with_doi").exists()

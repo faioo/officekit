@@ -187,6 +187,34 @@ def test_find_command_missing_pdftoppm_lists_checked_vendor_paths(mocker, tmp_pa
     assert str(vendor_dir / "poppler" / "Library" / "bin" / "pdftoppm.exe") in message
 
 
+def test_convert_word_to_images_defaults_to_source_directory(mocker, tmp_path):
+    """Generated images should be written next to the source document by default."""
+    docx_file = tmp_path / "test_doc.docx"
+    docx_file.write_text("mock content")
+
+    mocker.patch("shutil.which", side_effect=lambda name: f"/mock/bin/{name}")
+    mock_run = mocker.patch("officekit.tools.word2img.core._run")
+
+    expected_img_1 = tmp_path / "test_doc-1.png"
+    expected_img_2 = tmp_path / "test_doc-2.png"
+
+    def side_effect_run(cmd):
+        if "soffice" in cmd[0]:
+            outdir = cmd[cmd.index("--outdir") + 1]
+            pdf_path = Path(outdir) / "test_doc.pdf"
+            pdf_path.write_text("mock pdf")
+        elif "pdftoppm" in cmd[0]:
+            assert cmd[-1] == str(tmp_path / "test_doc")
+            expected_img_1.write_text("img1")
+            expected_img_2.write_text("img2")
+
+    mock_run.side_effect = side_effect_run
+
+    result = convert_word_to_images(docx_file, image_format="png", dpi=150)
+
+    assert result == [expected_img_1, expected_img_2]
+
+
 def test_convert_word_to_images_successful_flow(mocker, tmp_path):
     """Verify conversion workflow executes soffice and pdftoppm correctly."""
     # Create a mock docx

@@ -57,7 +57,7 @@ def convert_word_to_images(
         supported = ", ".join(sorted(SUPPORTED_IMAGE_FORMATS))
         raise ValueError(f"Unsupported image format: {image_format}. Expected {supported}.")
 
-    destination = Path(output_dir).expanduser().resolve() if output_dir else source.with_name(f"{source.stem}_images")
+    destination = Path(output_dir).expanduser().resolve() if output_dir else source.parent
     destination.mkdir(parents=True, exist_ok=True)
 
     soffice = _find_command("soffice", "libreoffice")
