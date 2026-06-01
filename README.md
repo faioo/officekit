@@ -87,7 +87,7 @@ brew install poppler
 我们提供了一键打包脚本 `build_app.py`，能自适应生成最符合操作系统安全与启动性能的免环境独立程序：
 
 ### macOS 平台打包 (生成秒开的 `.app` 文件夹并压缩为 ZIP)
-因为在 macOS 下如果将 windowed 界面打包为单文件 (onefile)，会导致 Gatekeeper 反复解压，出现严重的冷启动长延迟。因此我们的脚本会自动在 `dist/` 下生成标准的 `OfficeKit.app` 并将其压缩为 **`OfficeKit_macOS_v0.1.0.zip`**。
+因为在 macOS 下如果将 windowed 界面打包为单文件 (onefile)，会导致 Gatekeeper 反复解压，出现严重的冷启动长延迟。因此我们的脚本会自动在 `dist/` 下生成标准的 `OfficeKit.app` 并将其压缩为 **`OfficeKit_macOS_vX.Y.Z.zip`**。版本号来自当前 Git tag 或 CI 传入的 `OFFICEKIT_VERSION`。
 - **内置依赖**：打包脚本会把构建机上的 `/Applications/LibreOffice.app` 和 Homebrew Poppler (`pdftoppm` 及相关动态库) 复制进 `OfficeKit.app/Contents/Resources/vendor/`。GitHub Actions 的 macOS Release 构建会自动安装并内置这两个依赖。
 - **打包指令**：
   ```bash
@@ -98,14 +98,14 @@ brew install poppler
 - **分发与使用**：非技术人员在拿到导出的 ZIP 文件后，**双击解压**，直接将解压出的 `OfficeKit` (即 `OfficeKit.app`) **拖入“应用程序 (Applications)”文件夹**中，即可像普通苹果软件一样双击直接无门槛秒开运行！
 
 ### Windows 平台打包 (生成内置依赖的 ZIP)
-在 Windows 下，脚本会生成 `OfficeKit.exe`，并额外打包出包含 `vendor/LibreOffice/` 与 `vendor/poppler/` 的 **`OfficeKit_Windows_v0.1.0.zip`**，适合直接分发给未安装任何依赖的普通用户。
+在 Windows 下，脚本会生成 `OfficeKit.exe`，并额外打包出包含 `vendor/LibreOffice/` 与 `vendor/poppler/` 的 **`OfficeKit_Windows_vX.Y.Z.zip`**，适合直接分发给未安装任何依赖的普通用户。
 - **内置依赖**：打包脚本会把构建机上的 LibreOffice (`soffice.exe`) 和 Poppler (`pdftoppm.exe`) 复制到 `OfficeKit.exe` 同级的 `vendor/` 目录。GitHub Actions 的 Windows Release 构建会自动安装并内置这两个依赖。
 - **打包指令**：
   ```bash
   choco install libreoffice-fresh poppler -y
   python build_app.py
   ```
-- **分发与使用**：将 `dist/OfficeKit_Windows_v0.1.0.zip` 发给普通用户，用户解压后双击里面的 `OfficeKit.exe` 即可运行。注意不要只单独发送 `OfficeKit.exe`，否则 `word2img` 无法使用内置的 LibreOffice/Poppler。
+- **分发与使用**：将 `dist/OfficeKit_Windows_vX.Y.Z.zip` 发给普通用户，用户解压后双击里面的 `OfficeKit.exe` 即可运行。注意不要只单独发送 `OfficeKit.exe`，否则 `word2img` 无法使用内置的 LibreOffice/Poppler。
 
 ---
 
@@ -115,9 +115,9 @@ brew install poppler
 
 1. **持续集成 (CI - 跑测)**：每次有新的 Commit 推送 (Push) 到 `main` 分支或提交 Pull Request 时，Pipeline 会自动拉起 Ubuntu 环境，自动检查全部源码是否存在 Python 语法与编译错误，确保代码时刻健康。
 2. **自动分发打包 (CD - Release 自动化发布)**：
-   - 当你在本地通过 Git 触发版本 Tag 推送（例如 `git tag v0.1.0 && git push origin v0.1.0`）时，GitHub Pipeline 会自动通过 `matrix` 分别拉起 **macOS (macos-latest)** 和 **Windows (windows-latest)** 虚拟机运行打包工作。
-   - 也可以在 GitHub 的 **Actions → CI and Automated Build → Run workflow** 手动触发打包，输入版本号（如 `v0.1.3`），并选择是否构建 macOS 或 Windows。
-   - 打包完成后，Pipeline 会自动将编译产物命名为带有具体版本号的文件（如 `OfficeKit_Windows_v0.1.0.zip` 和 `OfficeKit_macOS_v0.1.0.zip`）。
+   - 当你在本地通过 Git 触发版本 Tag 推送（例如 `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`）时，GitHub Pipeline 会自动通过 `matrix` 分别拉起 **macOS (macos-latest)** 和 **Windows (windows-latest)** 虚拟机运行打包工作。
+   - 也可以在 GitHub 的 **Actions → CI and Automated Build → Run workflow** 手动触发打包，输入版本号（如 `vX.Y.Z`），并选择是否构建 macOS 或 Windows。
+   - 打包完成后，Pipeline 会自动将编译产物命名为带有具体版本号的文件（如 `OfficeKit_Windows_vX.Y.Z.zip` 和 `OfficeKit_macOS_vX.Y.Z.zip`）。
    - 最后，Pipeline 会调用 GitHub API 自动创建一个对应的 Release，并将这两个开箱即用的包作为 Release 的附件**自动发布**！非技术人员可以直接在 GitHub 的 "Releases" 栏目下一键下载最新版运行！
 
 ---

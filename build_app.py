@@ -42,6 +42,7 @@ WINDOWS_VENDOR_WARNING = (
     "Windows vendor dependencies were not fully bundled. "
     "Install LibreOffice and Poppler on the build machine for a self-contained app."
 )
+GENERATED_VERSION_MODULE = Path("src") / "officekit" / "_version.py"
 
 
 def configure_utf8_stdio() -> None:
@@ -85,6 +86,38 @@ def check_and_install_dependencies() -> None:
         )
 
 
+def resolve_build_versions(root_dir: Path) -> tuple[str, str]:
+    """Return product and release versions from env or Git tag."""
+    src_dir = root_dir / "src"
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
+
+    from officekit.version import get_release_version, get_version
+
+    product_version = get_version(include_generated=False)
+    release_version = get_release_version(include_generated=False)
+    return product_version, release_version
+
+
+def write_generated_version_module(root_dir: Path, product_version: str) -> Path:
+    """Write a build-time version module so packaged apps work without Git."""
+    version_module = root_dir / GENERATED_VERSION_MODULE
+    version_module.write_text(
+        '"""Generated build-time version for packaged OfficeKit apps."""\n\n'
+        f'__version__ = "{product_version}"\n',
+        encoding="utf-8",
+    )
+    return version_module
+
+
+def remove_generated_version_module(version_module: Path) -> None:
+    """Remove the temporary generated version module after packaging."""
+    try:
+        version_module.unlink()
+    except FileNotFoundError:
+        pass
+
+
 def build_desktop_app(target_platform: str) -> None:
     """Invokes flet pack with platform-specific optimizations."""
     host_os = platform.system().lower()
@@ -109,6 +142,8 @@ def build_desktop_app(target_platform: str) -> None:
     root_dir = Path(__file__).parent.resolve()
     main_script = root_dir / "src" / "officekit" / "main.py"
     dist_dir = root_dir / "dist"
+    product_version, release_version = resolve_build_versions(root_dir)
+    log(f"Resolved OfficeKit version: {release_version}")
 
     # Clean prior builds
     if dist_dir.exists():
@@ -129,7 +164,7 @@ def build_desktop_app(target_platform: str) -> None:
         "--product-name",
         "OfficeKit 办公小工具平台",
         "--product-version",
-        "0.1.0",
+        product_version,
         "--file-description",
         "OfficeKit 办公自动化轻量客户端",
         "--copyright",
@@ -159,18 +194,21 @@ def build_desktop_app(target_platform: str) -> None:
     env["PYTHONIOENCODING"] = "utf-8"
 
     # Run the flet pack command
+    generated_version_module = write_generated_version_module(root_dir, product_version)
     try:
         subprocess.run(pack_args, check=True, env=env)
     except subprocess.CalledProcessError as err:
         log(f"Packaging failed with exit code: {err.returncode}")
         sys.exit(err.returncode)
+    finally:
+        remove_generated_version_module(generated_version_module)
 
     # Post-build processing
     if target_platform == "mac":
         app_path = dist_dir / "OfficeKit.app"
         if app_path.exists():
             bundle_macos_vendor_dependencies(app_path)
-            archive_name = dist_dir / "OfficeKit_macOS_v0.1.0"
+            archive_name = dist_dir / f"OfficeKit_macOS_{release_version}"
             log(f"Compressing macOS .app bundle into: {archive_name}.zip")
             shutil.make_archive(str(archive_name), "zip", root_dir=str(dist_dir), base_dir="OfficeKit.app")
             log(f"macOS zip archive created successfully: {archive_name}.zip")
@@ -180,7 +218,7 @@ def build_desktop_app(target_platform: str) -> None:
     elif target_platform == "win":
         exe_path = dist_dir / "OfficeKit.exe"
         if exe_path.exists():
-            archive_name = create_windows_full_archive(dist_dir, exe_path)
+            archive_name = create_windows_full_archive(dist_dir, exe_path, release_version)
             log(f"Windows full zip archive created successfully: {archive_name}.zip")
         else:
             log("Error: Windows .exe was not found in 'dist/'!")
@@ -404,9 +442,9 @@ def codesign_macos_app(app_path: Path) -> None:
     log("Ad-hoc codesigned macOS app after bundling vendor dependencies.")
 
 
-def create_windows_full_archive(dist_dir: Path, exe_path: Path) -> Path:
+def create_windows_full_archive(dist_dir: Path, exe_path: Path, release_version: str) -> Path:
     """Create a Windows full distribution zip with OfficeKit.exe and vendor tools."""
-    package_dir = dist_dir / "OfficeKit_Windows_v0.1.0"
+    package_dir = dist_dir / f"OfficeKit_Windows_{release_version}"
     if package_dir.exists():
         shutil.rmtree(package_dir, ignore_errors=True)
     package_dir.mkdir(parents=True, exist_ok=True)
@@ -416,7 +454,7 @@ def create_windows_full_archive(dist_dir: Path, exe_path: Path) -> Path:
     bundle_windows_vendor_dependencies(vendor_dir)
     validate_windows_vendor_dependencies(vendor_dir)
 
-    archive_name = dist_dir / "OfficeKit_Windows_v0.1.0"
+    archive_name = dist_dir / f"OfficeKit_Windows_{release_version}"
     shutil.make_archive(str(archive_name), "zip", root_dir=str(dist_dir), base_dir=package_dir.name)
     return archive_name
 

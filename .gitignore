@@ -29,6 +29,7 @@ MANIFEST
 # Usually these files are written by a python script, but are local build artifacts
 *.manifest
 *.spec
+src/officekit/_version.py
 
 # Installer logs
 pip-log.txt

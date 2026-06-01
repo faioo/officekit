@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version, e.g. v0.1.3'
+        description: 'Release version, e.g. v1.2.3'
         required: true
-        default: 'v0.1.3'
       build_macos:
         description: 'Build macOS app'
         required: true
@@ -33,6 +32,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -60,6 +61,7 @@ jobs:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
       RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+      OFFICEKIT_VERSION: ${{ github.event.inputs.version || github.ref_name }}
     strategy:
       matrix:
         include:
@@ -71,6 +73,8 @@ jobs:
       - name: Check out repository
         if: github.event_name != 'workflow_dispatch' || (matrix.platform == 'mac' && inputs.build_macos) || (matrix.platform == 'win' && inputs.build_windows)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         if: github.event_name != 'workflow_dispatch' || (matrix.platform == 'mac' && inputs.build_macos) || (matrix.platform == 'win' && inputs.build_windows)
@@ -122,20 +126,6 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || (matrix.platform == 'mac' && inputs.build_macos) || (matrix.platform == 'win' && inputs.build_windows)
         run: |
           python build_app.py --platform ${{ matrix.platform }}
-
-      - name: Prepare Windows upload artifact name
-        if: matrix.os == 'windows-latest' && (github.event_name != 'workflow_dispatch' || inputs.build_windows)
-        shell: bash
-        run: |
-          # Rename Windows full ZIP to release version tag
-          mv dist/OfficeKit_Windows_v0.1.0.zip "dist/OfficeKit_Windows_${RELEASE_VERSION}.zip"
-
-      - name: Prepare macOS upload artifact name
-        if: matrix.os == 'macos-latest' && (github.event_name != 'workflow_dispatch' || inputs.build_macos)
-        shell: bash
-        run: |
-          # Rename Zip to release version tag
-          mv dist/OfficeKit_macOS_v0.1.0.zip "dist/OfficeKit_macOS_${RELEASE_VERSION}.zip"
 
       - name: Upload binaries to GitHub Release
         if: github.event_name != 'workflow_dispatch' || (matrix.platform == 'mac' && inputs.build_macos) || (matrix.platform == 'win' && inputs.build_windows)

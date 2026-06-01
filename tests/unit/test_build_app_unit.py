@@ -72,15 +72,15 @@ def test_create_windows_full_archive_includes_exe_and_vendor_dir(mocker, tmp_pat
 
     mocker.patch.object(build_app, "bundle_windows_vendor_dependencies", side_effect=fake_bundle)
 
-    archive_name = build_app.create_windows_full_archive(dist_dir, exe_path)
+    archive_name = build_app.create_windows_full_archive(dist_dir, exe_path, "v9.8.7")
 
-    assert archive_name == dist_dir / "OfficeKit_Windows_v0.1.0"
+    assert archive_name == dist_dir / "OfficeKit_Windows_v9.8.7"
     with zipfile.ZipFile(f"{archive_name}.zip") as archive:
         names = set(archive.namelist())
 
-    assert "OfficeKit_Windows_v0.1.0/OfficeKit.exe" in names
-    assert "OfficeKit_Windows_v0.1.0/vendor/marker.txt" in names
-    assert "OfficeKit_Windows_v0.1.0/vendor/poppler/bin/pdftoppm.exe" in names
+    assert "OfficeKit_Windows_v9.8.7/OfficeKit.exe" in names
+    assert "OfficeKit_Windows_v9.8.7/vendor/marker.txt" in names
+    assert "OfficeKit_Windows_v9.8.7/vendor/poppler/bin/pdftoppm.exe" in names
 
 
 def test_create_windows_full_archive_fails_without_poppler(mocker, tmp_path):
@@ -97,11 +97,36 @@ def test_create_windows_full_archive_fails_without_poppler(mocker, tmp_path):
     mocker.patch.object(build_app, "bundle_windows_vendor_dependencies", side_effect=fake_bundle)
 
     try:
-        build_app.create_windows_full_archive(dist_dir, exe_path)
+        build_app.create_windows_full_archive(dist_dir, exe_path, "v9.8.7")
     except RuntimeError as error:
         assert "pdftoppm.exe" in str(error)
     else:
         raise AssertionError("Expected missing Poppler to fail the Windows archive build")
+
+
+def test_resolve_build_versions_reads_environment(monkeypatch):
+    """Builds should resolve one version pair from the workflow environment."""
+    monkeypatch.setenv("OFFICEKIT_VERSION", "v2.3.4")
+    monkeypatch.delenv("RELEASE_VERSION", raising=False)
+
+    product_version, release_version = build_app.resolve_build_versions(BUILD_APP_PATH.parent)
+
+    assert product_version == "2.3.4"
+    assert release_version == "v2.3.4"
+
+
+def test_write_generated_version_module_is_temporary(tmp_path):
+    """Generated version files should be removable build artifacts."""
+    package_dir = tmp_path / "src" / "officekit"
+    package_dir.mkdir(parents=True)
+
+    version_module = build_app.write_generated_version_module(tmp_path, "2.3.4")
+
+    assert version_module == package_dir / "_version.py"
+    assert '__version__ = "2.3.4"' in version_module.read_text(encoding="utf-8")
+
+    build_app.remove_generated_version_module(version_module)
+    assert not version_module.exists()
 
 
 def test_copy_macos_dylib_dependencies_resolves_rpath_dependencies(mocker, tmp_path):
