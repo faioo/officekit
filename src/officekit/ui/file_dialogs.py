@@ -8,6 +8,12 @@ from collections.abc import Callable
 
 LogCallback = Callable[[str, str], None]
 
+MACOS_TYPE_IDENTIFIERS_BY_EXTENSION = {
+    "doc": "com.microsoft.word.doc",
+    "docx": "org.openxmlformats.wordprocessingml.document",
+    "xlsx": "org.openxmlformats.spreadsheetml.sheet",
+}
+
 
 def select_macos_file(
     prompt: str,
@@ -109,16 +115,20 @@ def _build_type_filter_clause(allowed_extensions: list[str] | None) -> str:
     if not allowed_extensions:
         return ""
 
-    normalized_extensions = []
+    type_filters = []
     for extension in allowed_extensions:
         normalized = extension.strip().lower().lstrip(".")
         if normalized:
-            normalized_extensions.append(normalized)
+            type_identifier = MACOS_TYPE_IDENTIFIERS_BY_EXTENSION.get(normalized)
+            type_filters.append(type_identifier or normalized)
 
-    if not normalized_extensions:
+    unique_type_filters = list(dict.fromkeys(type_filters))
+    if not unique_type_filters:
         return ""
 
-    type_list = ", ".join(f'"{_escape_applescript(extension)}"' for extension in normalized_extensions)
+    type_list = ", ".join(
+        f'"{_escape_applescript(type_filter)}"' for type_filter in unique_type_filters
+    )
     return f" of type {{{type_list}}}"
 
 

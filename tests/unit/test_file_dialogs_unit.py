@@ -70,7 +70,7 @@ def test_select_macos_files_splits_multiline_output(mocker):
 
 
 def test_select_macos_files_adds_extension_filter_to_script(mocker):
-    """Allowed extensions should be passed to the macOS native picker."""
+    """Known Office extensions should use strict macOS type identifiers."""
     mock_run = mocker.patch(
         "officekit.ui.file_dialogs.run_macos_dialog_script",
         return_value="/tmp/a.docx\n",
@@ -79,12 +79,15 @@ def test_select_macos_files_adds_extension_filter_to_script(mocker):
     result = file_dialogs.select_macos_files("选择文件", allowed_extensions=[".docx", "doc"])
 
     script = mock_run.call_args.args[0]
-    assert 'of type {"docx", "doc"}' in script
+    assert (
+        'of type {"org.openxmlformats.wordprocessingml.document", '
+        '"com.microsoft.word.doc"}'
+    ) in script
     assert result == ["/tmp/a.docx"]
 
 
 def test_select_macos_file_adds_extension_filter_to_script(mocker):
-    """Single file picker should also support extension filtering."""
+    """Single file picker should use strict macOS type identifiers."""
     mock_run = mocker.patch(
         "officekit.ui.file_dialogs.run_macos_dialog_script",
         return_value="/tmp/table.xlsx\n",
@@ -93,5 +96,19 @@ def test_select_macos_file_adds_extension_filter_to_script(mocker):
     result = file_dialogs.select_macos_file("选择 Excel", allowed_extensions=["xlsx"])
 
     script = mock_run.call_args.args[0]
-    assert 'of type {"xlsx"}' in script
+    assert 'of type {"org.openxmlformats.spreadsheetml.sheet"}' in script
     assert result == "/tmp/table.xlsx"
+
+
+def test_select_macos_file_keeps_unknown_extension_filter(mocker):
+    """Unknown extensions should still be passed through as extension filters."""
+    mock_run = mocker.patch(
+        "officekit.ui.file_dialogs.run_macos_dialog_script",
+        return_value="/tmp/data.custom\n",
+    )
+
+    result = file_dialogs.select_macos_file("选择文件", allowed_extensions=[".custom"])
+
+    script = mock_run.call_args.args[0]
+    assert 'of type {"custom"}' in script
+    assert result == "/tmp/data.custom"
