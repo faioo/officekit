@@ -1,6 +1,6 @@
 # officekit
 
-OfficeKit 是一个面向办公自动化的小工具集合，自带现代化、高颜值的 Flet GUI 桌面客户端，并完美保留命令行 (CLI) 双模启动模式。
+OfficeKit 是一个面向办公自动化的小工具集合，自带现代化、高颜值的 Flet GUI 桌面客户端。
 
 ## 项目结构
 
@@ -9,19 +9,17 @@ src/
 └── officekit/
     ├── main.py
     ├── core/
-    │   └── config.py
-    ├── ui/
-    │   ├── app.py          # GUI 主窗口布局
-    │   ├── base.py         # GUI 统一二级子页面基类
+    │   ├── config.py
     │   └── registry.py     # 统一工具注册表 (零入侵扩展)
+    ├── ui/
+    │   ├── app.py          # GUI 主窗口布局 (懒加载与状态缓存)
+    │   └── base.py         # GUI 统一二级子页面基类
     └── tools/
         ├── doi_query/
-        │   ├── cli.py
-        │   ├── core.py
+        │   ├── core.py     # DOI 查询业务逻辑
         │   └── ui.py       # DOI 查询二级子页面
         └── word2img/
-            ├── cli.py
-            ├── core.py
+            ├── core.py     # Word 转图片业务逻辑
             └── ui.py       # Word 转图片二级子页面
 ```
 
@@ -33,29 +31,12 @@ src/
 pip install -r requirements.txt
 ```
 
-### 1. 启动 GUI 桌面客户端 (默认)
+### 启动 GUI 桌面客户端 (默认)
 
 直接运行，即可打开跨平台图形桌面窗口：
 
 ```bash
 PYTHONPATH=src python -m officekit.main
-```
-
-### 2. 启动 CLI 交互式命令行菜单
-
-如果需要纯命令行运行，可以附加 `--cli` 参数：
-
-```bash
-PYTHONPATH=src python -m officekit.main --cli
-```
-
-### 3. 直接独立运行单个工具命令行
-
-也可以直接运行各工具的独立 CLI：
-
-```bash
-PYTHONPATH=src python -m officekit.tools.word2img.cli path/to/document.docx -o output/images
-PYTHONPATH=src python -m officekit.tools.doi_query.cli path/to/papers.xlsx -o output/with_doi.xlsx
 ```
 
 ## 功能组件说明
