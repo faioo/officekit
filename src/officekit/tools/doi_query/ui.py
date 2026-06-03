@@ -147,13 +147,21 @@ class DOIQueryFrame(BaseToolFrame):
             on_click=self.on_start_click,
             expand=True,
         )
+        self.stop_btn = ft.ElevatedButton(
+            "⏹ 停止查询",
+            bgcolor=ft.Colors.RED,
+            color=ft.Colors.WHITE,
+            on_click=self.on_stop_click,
+            disabled=True,
+            expand=True,
+        )
         self.progress_bar = ft.ProgressBar(value=0.0, expand=True, color=ft.Colors.BLUE)
         self.progress_text = ft.Text("状态: 已就绪", size=13, italic=True)
 
         section_actions = create_section_container(
             "4. 批量执行与进度",
             [
-                ft.Row(controls=[self.run_btn]),
+                ft.Row(controls=[self.run_btn, self.stop_btn], spacing=10),
                 ft.Row(controls=[self.progress_bar]),
                 self.progress_text,
             ],
@@ -323,9 +331,15 @@ class DOIQueryFrame(BaseToolFrame):
         return str(path)
 
     def run_doi_task(
-        self, input_file: str, out_file: str | None, sheet_name: str | None, timeout: int
+        self,
+        input_file: str,
+        out_file: str | None,
+        sheet_name: str | None,
+        timeout: int,
+        cancel_event: threading.Event | None = None,
     ) -> None:
         """Background task handler."""
+        import threading
         self.log(f"正在加载 Excel 工作簿: {Path(input_file).name}...")
 
         # Keep stats counters
@@ -354,6 +368,7 @@ class DOIQueryFrame(BaseToolFrame):
             sheet_name=sheet_name,
             timeout=timeout,
             progress_callback=on_progress,
+            cancel_event=cancel_event,
         )
 
         self.log("=" * 60)

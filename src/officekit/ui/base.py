@@ -3,9 +3,43 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+import tempfile
 import threading
 import traceback
 import flet as ft
+
+# Create uniform logging directory
+LOG_DIR = Path.home() / ".officekit" / "logs"
+try:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_FILE = LOG_DIR / "officekit.log"
+except Exception:
+    # Fallback to temp directory if home dir is not writeable
+    LOG_FILE = Path(tempfile.gettempdir()) / "officekit.log"
+
+# Setup standard RotatingFileLogger
+logger = logging.getLogger("officekit")
+logger.setLevel(logging.DEBUG)
+
+if not logger.handlers:
+    try:
+        file_handler = RotatingFileHandler(
+            LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
+        file_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter(
+            "%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s"
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    except Exception:
+        # If file handler creation completely fails, fallback to stream handler
+        stream_handler = logging.StreamHandler()
+        logger.addHandler(stream_handler)
 
 
 class BaseToolFrame(ft.Container):
@@ -21,6 +55,7 @@ class BaseToolFrame(ft.Container):
         self.stop_btn: ft.Button | None = None
         self.input_controls: list[ft.Control] = []
         self.is_running = False
+        self._cancel_event = threading.Event()
         self.current_thread: threading.Thread | None = None
 
         # Build the main layout
@@ -31,13 +66,23 @@ class BaseToolFrame(ft.Container):
         raise NotImplementedError
 
     def log(self, message: str, level: str = "INFO") -> None:
-        """Thread-safe logging helper."""
+        """Thread-safe logging helper, syncing to standard physical log and truncated UI text field."""
+        level_num = getattr(logging, level.upper(), logging.INFO)
+        logger.log(level_num, message)
+
         if not self.log_area:
             return
         timestamp = datetime.now().strftime("%H:%M:%S")
         prefix = f"[{timestamp}] [{level}] "
-        # Append message and update
-        self.log_area.value = (self.log_area.value or "") + f"{prefix}{message}\n"
+
+        # Truncate text to avoid memory leakage and flet websocket lag
+        current_val = self.log_area.value or ""
+        lines = current_val.splitlines()
+        if len(lines) > 200:
+            lines = lines[-200:]
+        lines.append(f"{prefix}{message}")
+
+        self.log_area.value = "\n".join(lines) + "\n"
         self.page.update()
 
     def update_progress(self, value: float | None, text: str = "") -> None:
@@ -48,11 +93,20 @@ class BaseToolFrame(ft.Container):
             self.progress_text.value = text
         self.page.update()
 
+    def on_stop_click(self, e) -> None:
+        """Callback to cancel the running background task cooperatively."""
+        if self.is_running:
+            self.log("收到终止指令，正在尝试安全退出...", level="WARNING")
+            self._cancel_event.set()
+
     def start_task(self, target, *args, **kwargs) -> None:
         """Runs the target function in a background thread."""
         if self.is_running:
             return
         self.is_running = True
+        self._cancel_event.clear()
+        kwargs["cancel_event"] = self._cancel_event
+
         self._set_controls_state(disabled=True)
         if self.log_area:
             self.log_area.value = ""
@@ -61,6 +115,9 @@ class BaseToolFrame(ft.Container):
         def wrapper() -> None:
             try:
                 target(*args, **kwargs)
+            except InterruptedError as error:
+                self.log(f"任务已被用户终止: {str(error)}", level="WARNING")
+                self.show_dialog("已中止", "任务已安全中止。")
             except Exception as error:
                 self.log(f"任务运行出错: {str(error)}", level="ERROR")
                 self.log(traceback.format_exc(), level="DEBUG")

@@ -70,10 +70,12 @@ def enrich_excel_with_doi(
     sheet_name: str | None = None,
     timeout: int = 30,
     progress_callback: Callable[[int, int, str, str], None] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> DOIQuerySummary:
     """Read an Excel file, append a DOI column, and save a new workbook."""
     from typing import Callable
     import concurrent.futures
+    import threading
     source = Path(input_path).expanduser().resolve()
     if not source.exists():
         raise FileNotFoundError(f"Excel file not found: {source}")
@@ -126,6 +128,9 @@ def enrich_excel_with_doi(
 
                 # Wait for results and write back in row-index order
                 for row_idx, title, future in futures:
+                    if cancel_event and cancel_event.is_set():
+                        raise InterruptedError("DOI 批量查询已被用户终止。")
+
                     try:
                         doi = future.result()
                     except Exception as e:

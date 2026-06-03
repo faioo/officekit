@@ -113,13 +113,21 @@ class Word2ImgFrame(BaseToolFrame):
             on_click=self.on_start_click,
             expand=True,
         )
+        self.stop_btn = ft.ElevatedButton(
+            "⏹ 停止转换",
+            bgcolor=ft.Colors.RED,
+            color=ft.Colors.WHITE,
+            on_click=self.on_stop_click,
+            disabled=True,
+            expand=True,
+        )
         self.progress_bar = ft.ProgressBar(value=0.0, expand=True, color=ft.Colors.GREEN)
         self.progress_text = ft.Text("状态: 已就绪", size=13, italic=True)
 
         section_actions = create_section_container(
             "3. 转换控制与进度",
             [
-                ft.Row(controls=[self.run_btn]),
+                ft.Row(controls=[self.run_btn, self.stop_btn], spacing=10),
                 ft.Row(controls=[self.progress_bar]),
                 self.progress_text,
             ],
@@ -327,9 +335,14 @@ class Word2ImgFrame(BaseToolFrame):
         self.start_task(self.run_conversion_task, out_dir, img_format, dpi)
 
     def run_conversion_task(
-        self, out_dir: str | None, img_format: str, dpi: int
+        self,
+        out_dir: str | None,
+        img_format: str,
+        dpi: int,
+        cancel_event: threading.Event | None = None,
     ) -> None:
         """Synchronous task executed in the background thread."""
+        import threading
         files_to_convert: list[Path] = []
 
         if self.selected_folder:
@@ -358,6 +371,9 @@ class Word2ImgFrame(BaseToolFrame):
         all_generated_images = []
 
         for index, file_path in enumerate(files_to_convert, 1):
+            if cancel_event and cancel_event.is_set():
+                raise InterruptedError("Word 批量转换已被用户终止。")
+
             self.log("-" * 50)
             self.log(f"[{index}/{total_files}] 正在转换: {file_path.name}")
             self.update_progress(

@@ -175,7 +175,7 @@ def test_doi_ui_task_execution(mocker):
     )
     
     # Simulate enrich_excel_with_doi calling the progress callback inside
-    def fake_enrich(input_path, output_path, sheet_name, timeout, progress_callback):
+    def fake_enrich(input_path, output_path, sheet_name, timeout, progress_callback, cancel_event=None):
         if progress_callback:
             # Trigger 3 successes, 1 error, 1 not_found
             progress_callback(1, 5, "Paper 1", "10.1109/1")
