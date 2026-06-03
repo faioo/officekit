@@ -31,8 +31,8 @@ def test_enrich_excel_integration(mocker, tmp_path):
     wb.save(input_xlsx)
     wb.close()
 
-    # 2. Mock requests.get to return fake API responses
-    mock_get = mocker.patch("requests.get")
+    # 2. Mock requests.Session.get to return fake API responses
+    mock_get = mocker.patch("requests.Session.get")
     
     # We will simulate different results for each query
     # Row 1: Success

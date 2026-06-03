@@ -30,6 +30,7 @@ def query_doi(
     year: Any,
     *,
     timeout: int = 30,
+    session: requests.Session | None = None,
 ) -> str:
     """Query Crossref for the most likely DOI for a paper."""
     query = " ".join(str(value).strip() for value in (title, journal, year) if value)
@@ -37,11 +38,18 @@ def query_doi(
         return "Not Found"
 
     try:
-        response = requests.get(
-            CROSSREF_WORKS_URL,
-            params={"query.bibliographic": query, "rows": 1},
-            timeout=timeout,
-        )
+        if session is not None:
+            response = session.get(
+                CROSSREF_WORKS_URL,
+                params={"query.bibliographic": query, "rows": 1},
+                timeout=timeout,
+            )
+        else:
+            response = requests.get(
+                CROSSREF_WORKS_URL,
+                params={"query.bibliographic": query, "rows": 1},
+                timeout=timeout,
+            )
         response.raise_for_status()
     except requests.exceptions.Timeout:
         return "Timeout"
@@ -65,6 +73,7 @@ def enrich_excel_with_doi(
 ) -> DOIQuerySummary:
     """Read an Excel file, append a DOI column, and save a new workbook."""
     from typing import Callable
+    import concurrent.futures
     source = Path(input_path).expanduser().resolve()
     if not source.exists():
         raise FileNotFoundError(f"Excel file not found: {source}")
@@ -90,21 +99,48 @@ def enrich_excel_with_doi(
         success = 0
         errors = 0
 
-        for row_index in range(2, sheet.max_row + 1):
-            title = sheet.cell(row=row_index, column=columns["Title"]).value
-            journal = sheet.cell(row=row_index, column=columns["Journal"]).value
-            year = sheet.cell(row=row_index, column=columns["Year"]).value
+        if total > 0:
+            tasks = []
+            for row_index in range(2, sheet.max_row + 1):
+                title = sheet.cell(row=row_index, column=columns["Title"]).value
+                journal = sheet.cell(row=row_index, column=columns["Journal"]).value
+                year = sheet.cell(row=row_index, column=columns["Year"]).value
+                tasks.append((row_index, title, journal, year))
 
-            doi = query_doi(title, journal, year, timeout=timeout)
-            sheet.cell(row=row_index, column=doi_col, value=doi)
+            session = requests.Session()
+            completed = 0
 
-            if doi.startswith("Error") or doi == "Timeout":
-                errors += 1
-            elif doi != "Not Found":
-                success += 1
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                # Submit tasks and keep their order
+                futures = []
+                for row_idx, title, journal, year in tasks:
+                    future = executor.submit(
+                        query_doi,
+                        title,
+                        journal,
+                        year,
+                        timeout=timeout,
+                        session=session,
+                    )
+                    futures.append((row_idx, title, future))
 
-            if progress_callback:
-                progress_callback(row_index - 1, total, str(title or ""), doi)
+                # Wait for results and write back in row-index order
+                for row_idx, title, future in futures:
+                    try:
+                        doi = future.result()
+                    except Exception as e:
+                        doi = f"Error: {str(e)[:80]}"
+
+                    sheet.cell(row=row_idx, column=doi_col, value=doi)
+
+                    if doi.startswith("Error") or doi == "Timeout":
+                        errors += 1
+                    elif doi != "Not Found":
+                        success += 1
+
+                    completed += 1
+                    if progress_callback:
+                        progress_callback(completed, total, str(title or ""), doi)
 
         workbook.save(destination)
     finally:
