@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import flet as ft
-from officekit.ui.registry import REGISTERED_TOOLS
+from officekit.core.registry import REGISTERED_TOOLS, load_tool_class
 
 
 class MainAppLayout(ft.Row):
@@ -12,12 +12,15 @@ class MainAppLayout(ft.Row):
     def __init__(self, page: ft.Page, **kwargs) -> None:
         self.page = page
 
-        # Instantiate all tool subpages to preserve their states during switches
+        # Lazy instantiation of tool subpages to optimize cold start performance
         self.tool_instances = {}
-        for tool in REGISTERED_TOOLS:
-            self.tool_instances[tool["id"]] = tool["class"](page)
 
-        # Left Sidebar: NavigationRail
+        # Load only the first tool on initial startup to keep startup time near-zero
+        default_tool = REGISTERED_TOOLS[0]
+        default_class = load_tool_class(default_tool.class_path)
+        self.tool_instances[default_tool.id] = default_class(page)
+
+        # Left Sidebar: NavigationRail (using dynamic string icon resolution)
         self.rail = ft.NavigationRail(
             selected_index=0,
             label_type=ft.NavigationRailLabelType.ALL,
@@ -25,18 +28,18 @@ class MainAppLayout(ft.Row):
             group_alignment=-0.9,
             destinations=[
                 ft.NavigationRailDestination(
-                    icon=tool["icon"],
-                    selected_icon=tool["selected_icon"],
-                    label=tool["name"],
+                    icon=getattr(ft.Icons, tool.icon_name),
+                    selected_icon=getattr(ft.Icons, tool.selected_icon_name),
+                    label=tool.name,
                 )
                 for tool in REGISTERED_TOOLS
             ],
             on_change=self.on_nav_change,
         )
 
-        # Right Area: Container loading active subpage
+        # Right Area: Container loading the active subpage
         self.content_container = ft.Container(
-            content=self.tool_instances[REGISTERED_TOOLS[0]["id"]],
+            content=self.tool_instances[default_tool.id],
             expand=True,
         )
 
@@ -53,7 +56,14 @@ class MainAppLayout(ft.Row):
     def on_nav_change(self, e: ft.ControlEvent) -> None:
         """Called when user clicks another sidebar navigation item."""
         selected_index = int(self.rail.selected_index)
-        tool_id = REGISTERED_TOOLS[selected_index]["id"]
+        tool = REGISTERED_TOOLS[selected_index]
+        tool_id = tool.id
+
+        # Lazy instantiate tool frame class on-demand and cache it
+        if tool_id not in self.tool_instances:
+            tool_class = load_tool_class(tool.class_path)
+            self.tool_instances[tool_id] = tool_class(self.page)
+
         # Update display control and refresh page
         self.content_container.content = self.tool_instances[tool_id]
         self.page.update()
