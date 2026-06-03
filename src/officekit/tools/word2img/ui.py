@@ -5,11 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 import flet as ft
 
+from officekit.core.registry import register_tool
 from officekit.ui.base import BaseToolFrame, create_section_container
 from officekit.ui.file_dialogs import select_macos_directory, select_macos_files
 from officekit.tools.word2img.core import SUPPORTED_WORD_SUFFIXES, convert_word_to_images
 
 
+@register_tool(
+    id_="word2img",
+    name="Word 转图片",
+    icon_name="IMAGE_OUTLINED",
+    selected_icon_name="IMAGE",
+)
 class Word2ImgFrame(BaseToolFrame):
     """Word to Image tool interface with batch and directory support."""
 

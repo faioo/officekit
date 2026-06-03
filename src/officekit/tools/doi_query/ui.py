@@ -5,11 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 import flet as ft
 
+from officekit.core.registry import register_tool
 from officekit.ui.base import BaseToolFrame, create_section_container
 from officekit.ui.file_dialogs import select_macos_file, select_macos_save_file
 from officekit.tools.doi_query.core import enrich_excel_with_doi
 
 
+@register_tool(
+    id_="doi_query",
+    name="DOI 查询",
+    icon_name="SEARCH_OUTLINED",
+    selected_icon_name="SEARCH",
+)
 class DOIQueryFrame(BaseToolFrame):
     """DOI Query tool interface."""
 
