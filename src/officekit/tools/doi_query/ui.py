@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 import flet as ft
 
 from officekit.core.registry import register_tool
@@ -88,7 +87,7 @@ class DOIQueryFrame(BaseToolFrame):
             border_radius=8,
             padding=10,
             expand=True,
-            alignment=ft.Alignment.CENTER,
+            alignment=ft.alignment.center,
         )
 
     def _set_stat_val(self, card: ft.Container, val: str) -> None:
@@ -99,10 +98,8 @@ class DOIQueryFrame(BaseToolFrame):
                 break
 
     def build_ui(self) -> ft.Control:
-        # Flet 0.85+ removed the ``on_result`` constructor kwarg; pick_files /
-        # save_file now return their result directly, so we dispatch to the
-        # handlers ourselves at each call site.
-        self.file_picker = ft.FilePicker()
+        # Use a single picker with mode dispatch; macOS uses native AppleScript first.
+        self.file_picker = ft.FilePicker(on_result=self.on_picker_result)
         self.page.overlay.append(self.file_picker)
 
         # Section 1: Files
@@ -247,9 +244,7 @@ class DOIQueryFrame(BaseToolFrame):
             return
 
         self.picker_mode = "input_file"
-        files = self.file_picker.pick_files(allowed_extensions=["xlsx"])
-        if files:
-            self.on_file_selected(SimpleNamespace(files=files))
+        self.file_picker.pick_files(allowed_extensions=["xlsx"])
 
     def open_output_file_picker(self, e) -> None:
         """Open native picker for the output Excel path."""
@@ -264,11 +259,15 @@ class DOIQueryFrame(BaseToolFrame):
             return
 
         self.picker_mode = "output_file"
-        saved_path = self.file_picker.save_file(
-            allowed_extensions=["xlsx"], file_name="doi_results.xlsx"
-        )
-        if saved_path:
-            self.on_output_selected(SimpleNamespace(path=saved_path))
+        self.file_picker.save_file(allowed_extensions=["xlsx"], file_name="doi_results.xlsx")
+
+    def on_picker_result(self, e: ft.FilePickerResultEvent) -> None:
+        """Dispatch single FilePicker result by the requested mode."""
+        if self.picker_mode == "input_file":
+            self.on_file_selected(e)
+        elif self.picker_mode == "output_file":
+            self.on_output_selected(e)
+        self.picker_mode = None
 
     def on_file_selected(self, e: ft.FilePickerResultEvent) -> None:
         """Handle source file selection and extract sheet names."""

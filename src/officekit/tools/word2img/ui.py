@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 import flet as ft
 
 from officekit.core.registry import register_tool
@@ -69,10 +68,8 @@ class Word2ImgFrame(BaseToolFrame):
         self.bind_pref(self.output_dir_field, "output_dir", default="")
 
     def build_ui(self) -> ft.Control:
-        # Flet 0.85+ removed the ``on_result`` constructor kwarg; pick_files /
-        # get_directory_path / save_file now return their result directly, so
-        # we dispatch to the handlers ourselves at each call site.
-        self.file_picker = ft.FilePicker()
+        # A single picker with mode dispatch avoids picker state conflicts on desktop.
+        self.file_picker = ft.FilePicker(on_result=self.on_picker_result)
         self.page.overlay.append(self.file_picker)
 
         # Sections
@@ -234,12 +231,10 @@ class Word2ImgFrame(BaseToolFrame):
             return
 
         self.picker_mode = "input_files"
-        files = self.file_picker.pick_files(
+        self.file_picker.pick_files(
             allowed_extensions=allowed_extensions,
             allow_multiple=True,
         )
-        if files:
-            self.on_files_selected(SimpleNamespace(files=files))
 
     def open_input_dir_picker(self) -> None:
         """Open native picker for a folder that contains Word files."""
@@ -250,9 +245,7 @@ class Word2ImgFrame(BaseToolFrame):
             return
 
         self.picker_mode = "input_dir"
-        directory = self.file_picker.get_directory_path()
-        if directory:
-            self.on_input_dir_selected(SimpleNamespace(path=directory))
+        self.file_picker.get_directory_path()
 
     def open_output_dir_picker(self, e) -> None:
         """Open native picker for the output folder."""
@@ -263,9 +256,17 @@ class Word2ImgFrame(BaseToolFrame):
             return
 
         self.picker_mode = "output_dir"
-        directory = self.file_picker.get_directory_path()
-        if directory:
-            self.on_output_dir_selected(SimpleNamespace(path=directory))
+        self.file_picker.get_directory_path()
+
+    def on_picker_result(self, e: ft.FilePickerResultEvent) -> None:
+        """Dispatch the single FilePicker result by the last requested mode."""
+        if self.picker_mode == "input_files":
+            self.on_files_selected(e)
+        elif self.picker_mode == "input_dir":
+            self.on_input_dir_selected(e)
+        elif self.picker_mode == "output_dir":
+            self.on_output_dir_selected(e)
+        self.picker_mode = None
 
     def on_files_selected(self, e: ft.FilePickerResultEvent) -> None:
         """Called when one or more Word files are selected."""
