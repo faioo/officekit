@@ -10,6 +10,8 @@ from officekit.ui.base import BaseToolFrame, create_section_container
 from officekit.ui.file_dialogs import select_macos_file, select_macos_save_file
 from officekit.tools.doi_query.core import enrich_excel_with_doi
 
+DOI_DEFAULT_OUTPUT_FILENAME = "doi_results.xlsx"
+
 
 @register_tool(
     id_="doi_query",
@@ -19,6 +21,8 @@ from officekit.tools.doi_query.core import enrich_excel_with_doi
 )
 class DOIQueryFrame(BaseToolFrame):
     """DOI Query tool interface."""
+
+    TOOL_ID = "doi_query"
 
     def __init__(self, page: ft.Page, **kwargs) -> None:
         self.picker_mode: str | None = None
@@ -53,6 +57,14 @@ class DOIQueryFrame(BaseToolFrame):
         self.error_card = self._create_stat_card("查询失败", "0", ft.Colors.RED)
 
         super().__init__(page, **kwargs)
+
+        self.bind_pref(self.timeout_field, "timeout", default="30")
+
+        stored_output_dir = self.prefs.get(self.TOOL_ID, "output_dir")
+        if stored_output_dir:
+            self.output_path_field.value = str(
+                Path(stored_output_dir) / DOI_DEFAULT_OUTPUT_FILENAME
+            )
 
     def _create_stat_card(self, title: str, init_val: str, text_color: str) -> ft.Container:
         return ft.Container(
@@ -295,6 +307,12 @@ class DOIQueryFrame(BaseToolFrame):
         """Apply output Excel path from any picker backend."""
         output_path = self._normalize_excel_output_path(file_path)
         self.output_path_field.value = output_path
+        if self.TOOL_ID:
+            try:
+                parent_dir = str(Path(output_path).expanduser().parent)
+                self.prefs.set(self.TOOL_ID, "output_dir", parent_dir)
+            except Exception:
+                pass
         self.page.update()
 
     def on_start_click(self, e) -> None:

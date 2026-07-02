@@ -20,6 +20,8 @@ from officekit.tools.word2img.core import SUPPORTED_WORD_SUFFIXES, convert_word_
 class Word2ImgFrame(BaseToolFrame):
     """Word to Image tool interface with batch and directory support."""
 
+    TOOL_ID = "word2img"
+
     def __init__(self, page: ft.Page, **kwargs) -> None:
         self.selected_files: list[str] = []
         self.selected_folder: str = ""
@@ -60,6 +62,10 @@ class Word2ImgFrame(BaseToolFrame):
         )
 
         super().__init__(page, **kwargs)
+
+        self.bind_pref(self.format_radio, "format", default="png")
+        self.bind_pref(self.dpi_dropdown, "dpi", default="150")
+        self.bind_pref(self.output_dir_field, "output_dir", default="")
 
     def build_ui(self) -> ft.Control:
         # A single picker with mode dispatch avoids picker state conflicts on desktop.
@@ -315,6 +321,8 @@ class Word2ImgFrame(BaseToolFrame):
     def _apply_output_folder_path(self, folder_path: str) -> None:
         """Apply selected output folder from any picker backend."""
         self.output_dir_field.value = folder_path
+        if self.TOOL_ID:
+            self.prefs.set(self.TOOL_ID, "output_dir", folder_path)
         self.page.update()
 
     def on_start_click(self, e) -> None:

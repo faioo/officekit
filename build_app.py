@@ -184,6 +184,14 @@ def build_desktop_app(target_platform: str) -> None:
     elif target_platform == "win":
         # Windows: Pack into a clean single executable file
         log("Configuring Windows single file .exe packaging...")
+        # pywin32 submodules are imported lazily inside the Word COM backend, so
+        # PyInstaller's static analysis cannot discover them without hints.
+        pack_args.extend([
+            "--hidden-import", "win32com",
+            "--hidden-import", "win32com.client",
+            "--hidden-import", "pythoncom",
+            "--hidden-import", "pywintypes",
+        ])
     else:
         log("Configuring Linux standalone packaging...")
 

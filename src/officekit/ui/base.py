@@ -10,7 +10,11 @@ from pathlib import Path
 import tempfile
 import threading
 import traceback
+from collections.abc import Callable
+from typing import Any
 import flet as ft
+
+from officekit.core.preferences import PreferencesStore, get_preferences_store
 
 # Create uniform logging directory
 LOG_DIR = Path.home() / ".officekit" / "logs"
@@ -45,6 +49,8 @@ if not logger.handlers:
 class BaseToolFrame(ft.Container):
     """Base class for all second-level tool subpages in OfficeKit GUI."""
 
+    TOOL_ID: str | None = None
+
     def __init__(self, page: ft.Page, **kwargs) -> None:
         super().__init__(expand=True, padding=20, **kwargs)
         self.page = page
@@ -57,9 +63,76 @@ class BaseToolFrame(ft.Container):
         self.is_running = False
         self._cancel_event = threading.Event()
         self.current_thread: threading.Thread | None = None
+        self.prefs: PreferencesStore = get_preferences_store()
 
         # Build the main layout
         self.content = self.build_ui()
+
+    def bind_pref(
+        self,
+        control: ft.Control,
+        key: str,
+        *,
+        default: Any = None,
+        attr: str = "value",
+        coerce: Callable[[Any], Any] | None = None,
+        to_storage: Callable[[Any], Any] | None = None,
+        from_storage: Callable[[Any], Any] | None = None,
+    ) -> None:
+        """Bind a Flet control's attribute to the persistent preferences store.
+
+        - Reads the stored value (if any) and applies it to ``control.<attr>``.
+        - Wraps the control's existing ``on_change`` so that subsequent user
+          edits are written back to the store without breaking prior handlers.
+
+        Only enabled when ``TOOL_ID`` is set on the subclass; otherwise the
+        control keeps its default value untouched.
+        """
+        tool_id = self.TOOL_ID
+        if not tool_id:
+            return
+
+        stored = self.prefs.get(tool_id, key, default)
+        if stored is not None:
+            display_value = from_storage(stored) if from_storage else stored
+            if display_value is not None:
+                try:
+                    setattr(control, attr, display_value)
+                except Exception as error:  # pragma: no cover - flet edge
+                    logger.debug(
+                        "Failed to restore preference %s.%s: %s", tool_id, key, error
+                    )
+
+        prior_on_change = getattr(control, "on_change", None)
+
+        def _on_change(event: ft.ControlEvent) -> None:
+            if callable(prior_on_change):
+                try:
+                    prior_on_change(event)
+                except Exception:
+                    logger.exception(
+                        "Prior on_change handler for %s.%s raised", tool_id, key
+                    )
+            try:
+                raw_value = getattr(control, attr, None)
+                if coerce is not None and raw_value is not None:
+                    try:
+                        raw_value = coerce(raw_value)
+                    except (TypeError, ValueError):
+                        return
+                to_store = to_storage(raw_value) if to_storage else raw_value
+                self.prefs.set(tool_id, key, to_store)
+            except Exception:
+                logger.exception(
+                    "Failed to persist preference %s.%s", tool_id, key
+                )
+
+        try:
+            control.on_change = _on_change
+        except Exception as error:  # pragma: no cover - flet edge
+            logger.debug(
+                "Control %r does not accept on_change binding: %s", control, error
+            )
 
     def build_ui(self) -> ft.Control:
         """Must be overridden by subclasses to return the main UI layout."""

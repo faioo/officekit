@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+from officekit.tools.word2img.converters import (
+    convert_via_libreoffice,
+    convert_via_word_com,
+)
+
+logger = logging.getLogger("officekit")
 
 SUPPORTED_WORD_SUFFIXES = {".doc", ".docx"}
 SUPPORTED_IMAGE_FORMATS = {"png", "jpeg"}
@@ -60,26 +68,11 @@ def convert_word_to_images(
     destination = Path(output_dir).expanduser().resolve() if output_dir else source.parent
     destination.mkdir(parents=True, exist_ok=True)
 
-    soffice = _find_command("soffice", "libreoffice")
     pdftoppm = _find_command("pdftoppm")
 
     with tempfile.TemporaryDirectory(prefix="officekit-word2img-") as temp_dir:
         temp_path = Path(temp_dir)
-        _run(
-            [
-                soffice,
-                "--headless",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(temp_path),
-                str(source),
-            ]
-        )
-
-        pdf_path = temp_path / f"{source.stem}.pdf"
-        if not pdf_path.exists():
-            raise RuntimeError("LibreOffice did not produce a PDF file.")
+        pdf_path = _convert_to_pdf(source, temp_path)
 
         output_prefix = destination / source.stem
         format_flag = "-png" if image_format == "png" else "-jpeg"
@@ -91,6 +84,39 @@ def convert_word_to_images(
         raise RuntimeError("No images were generated from the Word document.")
 
     return images
+
+
+def _convert_to_pdf(source: Path, output_dir: Path) -> Path:
+    """Convert ``source`` to a PDF placed in ``output_dir`` using the best backend.
+
+    On Windows, MS Word COM automation is attempted first (highest fidelity;
+    preserves pagination exactly as Word sees it). Any failure -- pywin32
+    missing, Word not installed, license issues, corrupt file -- is logged
+    and the LibreOffice/soffice fallback is used.
+    """
+    word_com_error: Exception | None = None
+    if sys.platform == "win32":
+        try:
+            return convert_via_word_com(source, output_dir)
+        except Exception as error:
+            word_com_error = error
+            logger.warning(
+                "Word COM backend unavailable or failed for %s: %s. Falling back to LibreOffice.",
+                source.name,
+                error,
+            )
+
+    try:
+        soffice = _find_command("soffice", "libreoffice")
+    except RuntimeError as error:
+        if word_com_error is not None:
+            raise RuntimeError(
+                "Failed to convert Word document. Microsoft Word COM was tried and failed "
+                f"({word_com_error}); LibreOffice fallback is also unavailable: {error}"
+            ) from error
+        raise
+
+    return convert_via_libreoffice(source, output_dir, soffice)
 
 
 def _find_command(*names: str) -> str:

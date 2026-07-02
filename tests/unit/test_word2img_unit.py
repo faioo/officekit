@@ -195,18 +195,24 @@ def test_convert_word_to_images_defaults_to_source_directory(mocker, tmp_path):
     mocker.patch("shutil.which", side_effect=lambda name: f"/mock/bin/{name}")
     mock_run = mocker.patch("officekit.tools.word2img.core._run")
 
+    def fake_convert_to_pdf(source, output_dir):
+        pdf_path = Path(output_dir) / f"{source.stem}.pdf"
+        pdf_path.write_text("mock pdf")
+        return pdf_path
+
+    mocker.patch(
+        "officekit.tools.word2img.core._convert_to_pdf",
+        side_effect=fake_convert_to_pdf,
+    )
+
     expected_img_1 = tmp_path / "test_doc-1.png"
     expected_img_2 = tmp_path / "test_doc-2.png"
 
     def side_effect_run(cmd):
-        if "soffice" in cmd[0]:
-            outdir = cmd[cmd.index("--outdir") + 1]
-            pdf_path = Path(outdir) / "test_doc.pdf"
-            pdf_path.write_text("mock pdf")
-        elif "pdftoppm" in cmd[0]:
-            assert cmd[-1] == str(tmp_path / "test_doc")
-            expected_img_1.write_text("img1")
-            expected_img_2.write_text("img2")
+        assert "pdftoppm" in cmd[0]
+        assert cmd[-1] == str(tmp_path / "test_doc")
+        expected_img_1.write_text("img1")
+        expected_img_2.write_text("img2")
 
     mock_run.side_effect = side_effect_run
 
@@ -216,41 +222,182 @@ def test_convert_word_to_images_defaults_to_source_directory(mocker, tmp_path):
 
 
 def test_convert_word_to_images_successful_flow(mocker, tmp_path):
-    """Verify conversion workflow executes soffice and pdftoppm correctly."""
-    # Create a mock docx
+    """Verify conversion workflow executes the PDF backend and pdftoppm correctly."""
     docx_file = tmp_path / "test_doc.docx"
     docx_file.write_text("mock content")
 
-    # Mock dependencies
     mocker.patch("shutil.which", side_effect=lambda name: f"/mock/bin/{name}")
     mock_run = mocker.patch("officekit.tools.word2img.core._run")
 
-    # Mock the output files generated in temp dir and output dir
-    # During execution, pdftoppm output suffix will be e.g. -1.png, -2.png
+    def fake_convert_to_pdf(source, output_dir):
+        pdf_path = Path(output_dir) / f"{source.stem}.pdf"
+        pdf_path.write_text("mock pdf")
+        return pdf_path
+
+    mock_pdf = mocker.patch(
+        "officekit.tools.word2img.core._convert_to_pdf",
+        side_effect=fake_convert_to_pdf,
+    )
+
     output_dir = tmp_path / "images"
-    
-    # We mock Path.glob to return some mock image Paths so that the function finishes successfully
     mock_img_1 = output_dir / "test_doc-1.png"
     mock_img_2 = output_dir / "test_doc-2.png"
-    
-    # Pre-create output files in mock_run to simulate successful conversion
+
     def side_effect_run(cmd):
-        if "soffice" in cmd[0]:
-            # Convert-to pdf command, creates the pdf in temp directory
-            outdir = cmd[cmd.index("--outdir") + 1]
-            pdf_path = Path(outdir) / "test_doc.pdf"
-            pdf_path.write_text("mock pdf")
-        elif "pdftoppm" in cmd[0]:
-            # pdftoppm command, creates the images
-            output_dir.mkdir(parents=True, exist_ok=True)
-            mock_img_1.write_text("img1")
-            mock_img_2.write_text("img2")
+        assert "pdftoppm" in cmd[0]
+        output_dir.mkdir(parents=True, exist_ok=True)
+        mock_img_1.write_text("img1")
+        mock_img_2.write_text("img2")
 
     mock_run.side_effect = side_effect_run
 
     result = convert_word_to_images(docx_file, output_dir=output_dir, image_format="png", dpi=150)
-    
+
     assert len(result) == 2
     assert result[0] == mock_img_1
     assert result[1] == mock_img_2
-    assert mock_run.call_count == 2  # Soffice first, then pdftoppm
+    assert mock_pdf.call_count == 1
+    assert mock_run.call_count == 1
+
+
+def test_convert_to_pdf_prefers_word_com_on_windows(mocker, tmp_path):
+    """Windows should try the Word COM backend first."""
+    from officekit.tools.word2img import core
+
+    source = tmp_path / "doc.docx"
+    source.write_text("mock")
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    mocker.patch.object(core.sys, "platform", "win32")
+    expected_pdf = output_dir / "doc.pdf"
+    mock_word = mocker.patch(
+        "officekit.tools.word2img.core.convert_via_word_com",
+        return_value=expected_pdf,
+    )
+    mock_libre = mocker.patch("officekit.tools.word2img.core.convert_via_libreoffice")
+
+    result = core._convert_to_pdf(source, output_dir)
+
+    assert result == expected_pdf
+    mock_word.assert_called_once_with(source, output_dir)
+    mock_libre.assert_not_called()
+
+
+def test_convert_to_pdf_falls_back_to_libreoffice_when_word_com_fails(mocker, tmp_path):
+    """When Word COM raises, we should log a warning and fall back to LibreOffice."""
+    from officekit.tools.word2img import core
+
+    source = tmp_path / "doc.docx"
+    source.write_text("mock")
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    mocker.patch.object(core.sys, "platform", "win32")
+    mocker.patch(
+        "officekit.tools.word2img.core.convert_via_word_com",
+        side_effect=RuntimeError("Word COM unavailable"),
+    )
+    mocker.patch(
+        "officekit.tools.word2img.core._find_command",
+        return_value="/mock/bin/soffice",
+    )
+    expected_pdf = output_dir / "doc.pdf"
+    mock_libre = mocker.patch(
+        "officekit.tools.word2img.core.convert_via_libreoffice",
+        return_value=expected_pdf,
+    )
+
+    result = core._convert_to_pdf(source, output_dir)
+
+    assert result == expected_pdf
+    mock_libre.assert_called_once_with(source, output_dir, "/mock/bin/soffice")
+
+
+def test_convert_to_pdf_uses_libreoffice_on_non_windows(mocker, tmp_path):
+    """Non-Windows platforms should skip Word COM entirely."""
+    from officekit.tools.word2img import core
+
+    source = tmp_path / "doc.docx"
+    source.write_text("mock")
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    mocker.patch.object(core.sys, "platform", "darwin")
+    mock_word = mocker.patch("officekit.tools.word2img.core.convert_via_word_com")
+    mocker.patch(
+        "officekit.tools.word2img.core._find_command",
+        return_value="/mock/bin/soffice",
+    )
+    expected_pdf = output_dir / "doc.pdf"
+    mock_libre = mocker.patch(
+        "officekit.tools.word2img.core.convert_via_libreoffice",
+        return_value=expected_pdf,
+    )
+
+    result = core._convert_to_pdf(source, output_dir)
+
+    assert result == expected_pdf
+    mock_word.assert_not_called()
+    mock_libre.assert_called_once_with(source, output_dir, "/mock/bin/soffice")
+
+
+def test_convert_to_pdf_raises_composite_error_when_all_backends_fail(mocker, tmp_path):
+    """Both backends failing should produce a helpful composite error message."""
+    from officekit.tools.word2img import core
+
+    source = tmp_path / "doc.docx"
+    source.write_text("mock")
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    mocker.patch.object(core.sys, "platform", "win32")
+    mocker.patch(
+        "officekit.tools.word2img.core.convert_via_word_com",
+        side_effect=RuntimeError("Word COM unavailable"),
+    )
+    mocker.patch(
+        "officekit.tools.word2img.core._find_command",
+        side_effect=RuntimeError("soffice not found"),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        core._convert_to_pdf(source, output_dir)
+
+    message = str(exc_info.value)
+    assert "Word COM" in message
+    assert "LibreOffice" in message
+
+
+def test_convert_via_libreoffice_invokes_soffice(mocker, tmp_path):
+    """The LibreOffice backend should shell out to soffice and return the produced PDF."""
+    from officekit.tools.word2img.converters import convert_via_libreoffice
+
+    source = tmp_path / "doc.docx"
+    source.write_text("mock")
+    output_dir = tmp_path / "out"
+
+    def fake_run(cmd, **kwargs):
+        assert cmd[0] == "/mock/bin/soffice"
+        assert "--convert-to" in cmd and "pdf" in cmd
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        (output_dir / "doc.pdf").write_text("mock pdf")
+        return mocker.MagicMock(returncode=0, stdout="", stderr="")
+
+    mocker.patch(
+        "officekit.tools.word2img.converters.subprocess.run",
+        side_effect=fake_run,
+    )
+
+    result = convert_via_libreoffice(source, output_dir, "/mock/bin/soffice")
+    assert result == output_dir / "doc.pdf"
+
+
+def test_convert_via_word_com_rejects_non_windows(monkeypatch):
+    """The Word COM backend must refuse to run on non-Windows platforms."""
+    from officekit.tools.word2img import converters
+
+    monkeypatch.setattr(converters.sys, "platform", "linux")
+    with pytest.raises(RuntimeError) as exc_info:
+        converters.convert_via_word_com(Path("dummy.docx"), Path("."))
+    assert "Windows" in str(exc_info.value)
