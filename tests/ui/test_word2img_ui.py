@@ -20,7 +20,7 @@ def test_word2img_ui_initialization():
     assert frame.file_path_field.read_only is True
     assert frame.dpi_dropdown.value == "150"
     assert frame.format_radio.value == "png"
-    assert frame.run_btn.text == "▶ 开始转换"
+    assert frame.run_btn.content == "▶ 开始转换"
 
 
 def test_word2img_ui_single_file_selection():

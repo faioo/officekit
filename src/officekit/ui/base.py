@@ -51,9 +51,29 @@ class BaseToolFrame(ft.Container):
 
     TOOL_ID: str | None = None
 
+    @property
+    def page(self) -> ft.Page:  # type: ignore[override]
+        """Return the page reference captured at construction time.
+
+        Overrides ``Control.page`` (which is a read-only property that raises
+        until the control is mounted) so this base frame remains usable during
+        construction and in unit tests where a mock page is passed directly.
+        """
+        ref = self.__dict__.get("_page_ref")
+        if ref is not None:
+            return ref
+        return super().page
+
+    @page.setter
+    def page(self, value: ft.Page) -> None:
+        object.__setattr__(self, "_page_ref", value)
+
     def __init__(self, page: ft.Page, **kwargs) -> None:
         super().__init__(expand=True, padding=20, **kwargs)
-        self.page = page
+        # Newer Flet versions expose ``Control.page`` as a read-only property,
+        # so we cannot assign to ``self.page`` directly. Stash the reference on
+        # a private attribute and expose it through our own property below.
+        object.__setattr__(self, "_page_ref", page)
         self.log_area: ft.TextField | None = None
         self.progress_bar: ft.ProgressBar | None = None
         self.progress_text: ft.Text | None = None
@@ -245,5 +265,5 @@ def create_section_container(title: str, controls: list[ft.Control]) -> ft.Conta
         bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
         border_radius=8,
         padding=15,
-        margin=ft.margin.only(bottom=15),
+        margin=ft.Margin.only(bottom=15),
     )

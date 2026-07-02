@@ -86,17 +86,36 @@ class PreferencesStore:
         """Persist ``value`` under ``tool_id.key``.
 
         ``None`` and empty strings are treated as "clear this entry" so that
-        transient empty UI state does not leak into the on-disk file.
+        transient empty UI state does not leak into the on-disk file. Values
+        that cannot be JSON-encoded (e.g. mock objects in tests, unexpected
+        Flet types) are silently rejected instead of corrupting the store.
         """
         if not tool_id or not key:
             return
+        if value is None or (isinstance(value, str) and value == ""):
+            self._ensure_loaded()
+            with self._lock:
+                bucket = self._data.setdefault(tool_id, {})
+                bucket.pop(key, None)
+                self._flush_to_disk_locked()
+            return
+
+        try:
+            json.dumps(value)
+        except (TypeError, ValueError) as error:
+            logger.debug(
+                "Skipping non-serializable preference %s.%s (%s): %s",
+                tool_id,
+                key,
+                type(value).__name__,
+                error,
+            )
+            return
+
         self._ensure_loaded()
         with self._lock:
             bucket = self._data.setdefault(tool_id, {})
-            if value is None or (isinstance(value, str) and value == ""):
-                bucket.pop(key, None)
-            else:
-                bucket[key] = value
+            bucket[key] = value
             self._flush_to_disk_locked()
 
     def snapshot(self, tool_id: str) -> dict[str, Any]:

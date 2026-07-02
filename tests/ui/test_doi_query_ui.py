@@ -17,7 +17,7 @@ def test_doi_ui_initialization():
 
     assert frame.file_path_field.label == "Excel 文件路径 (.xlsx)"
     assert frame.timeout_field.value == "30"
-    assert frame.run_btn.text == "▶ 开始批量查询"
+    assert frame.run_btn.content == "▶ 开始批量查询"
     # Verify stats cards
     assert frame.total_card is not None
     assert frame.success_card is not None
@@ -98,7 +98,8 @@ def test_doi_ui_output_picker_uses_macos_native_selector(mocker):
 
     frame.open_output_file_picker(None)
 
-    assert frame.output_path_field.value == "/path/to/doi_results.xlsx"
+    from pathlib import Path as _Path
+    assert _Path(frame.output_path_field.value) == _Path("/path/to/doi_results.xlsx")
     frame.file_picker.save_file.assert_not_called()
     page_mock.update.assert_called()
 
