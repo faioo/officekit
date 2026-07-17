@@ -118,6 +118,44 @@ def remove_generated_version_module(version_module: Path) -> None:
         pass
 
 
+def create_pack_args(
+    main_script: Path,
+    product_version: str,
+    target_platform: str,
+) -> list[str]:
+    """Build flet pack arguments, including dynamically imported tool modules."""
+    pack_args = [
+        "flet",
+        "pack",
+        str(main_script),
+        "--name",
+        "OfficeKit",
+        "--product-name",
+        "OfficeKit 办公小工具平台",
+        "--product-version",
+        product_version,
+        "--file-description",
+        "OfficeKit 办公自动化轻量客户端",
+        "--copyright",
+        "Copyright 2026 OfficeKit",
+        "--pyinstaller-build-args=--collect-submodules=officekit.tools",
+        "-y",
+    ]
+
+    if target_platform == "mac":
+        pack_args.extend(["--bundle-id", "com.officekit.app"])
+    elif target_platform == "win":
+        # pywin32 submodules are imported lazily inside the Word COM backend.
+        pack_args.extend([
+            "--hidden-import", "win32com",
+            "--hidden-import", "win32com.client",
+            "--hidden-import", "pythoncom",
+            "--hidden-import", "pywintypes",
+        ])
+
+    return pack_args
+
+
 def build_desktop_app(target_platform: str) -> None:
     """Invokes flet pack with platform-specific optimizations."""
     host_os = platform.system().lower()
@@ -154,44 +192,15 @@ def build_desktop_app(target_platform: str) -> None:
     if build_dir.exists():
         shutil.rmtree(build_dir, ignore_errors=True)
 
-    # Base packing arguments
-    pack_args = [
-        "flet",
-        "pack",
-        str(main_script),
-        "--name",
-        "OfficeKit",
-        "--product-name",
-        "OfficeKit 办公小工具平台",
-        "--product-version",
-        product_version,
-        "--file-description",
-        "OfficeKit 办公自动化轻量客户端",
-        "--copyright",
-        "Copyright 2026 OfficeKit",
-        "-y",
-    ]
+    pack_args = create_pack_args(main_script, product_version, target_platform)
 
     # Platform-specific options
     if target_platform == "mac":
         # macOS: Standard onedir bundle (App directory), packed to preserve Apple sandbox features
         log("Configuring macOS .app directory packaging...")
-        # onedir is default on macOS windowed bundles
-        pack_args.extend([
-            "--bundle-id",
-            "com.officekit.app",
-        ])
     elif target_platform == "win":
         # Windows: Pack into a clean single executable file
         log("Configuring Windows single file .exe packaging...")
-        # pywin32 submodules are imported lazily inside the Word COM backend, so
-        # PyInstaller's static analysis cannot discover them without hints.
-        pack_args.extend([
-            "--hidden-import", "win32com",
-            "--hidden-import", "win32com.client",
-            "--hidden-import", "pythoncom",
-            "--hidden-import", "pywintypes",
-        ])
     else:
         log("Configuring Linux standalone packaging...")
 

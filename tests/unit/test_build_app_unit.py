@@ -129,6 +129,21 @@ def test_write_generated_version_module_is_temporary(tmp_path):
     assert not version_module.exists()
 
 
+def test_create_pack_args_collects_dynamic_tool_submodules():
+    """Frozen builds must include tools loaded through importlib at runtime."""
+    args = build_app.create_pack_args(
+        Path("src/officekit/main.py"),
+        product_version="1.2.3",
+        target_platform="win",
+    )
+
+    assert (
+        "--pyinstaller-build-args=--collect-submodules=officekit.tools"
+        in args
+    )
+    assert "--collect-submodules" not in args
+
+
 def test_copy_macos_dylib_dependencies_resolves_rpath_dependencies(mocker, tmp_path):
     """Homebrew Poppler links libpoppler through @rpath and must still be bundled."""
     homebrew_root = tmp_path / "homebrew"

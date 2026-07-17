@@ -53,7 +53,7 @@ class BaseToolFrame(ft.Container):
 
     def __init__(self, page: ft.Page, **kwargs) -> None:
         super().__init__(expand=True, padding=20, **kwargs)
-        self.page = page
+        self.app_page = page
         self.log_area: ft.TextField | None = None
         self.progress_bar: ft.ProgressBar | None = None
         self.progress_text: ft.Text | None = None
@@ -156,7 +156,7 @@ class BaseToolFrame(ft.Container):
         lines.append(f"{prefix}{message}")
 
         self.log_area.value = "\n".join(lines) + "\n"
-        self.page.update()
+        self.app_page.update()
 
     def update_progress(self, value: float | None, text: str = "") -> None:
         """Thread-safe progress updates. Value should be between 0.0 and 1.0 (or None for indeterminate)."""
@@ -164,7 +164,7 @@ class BaseToolFrame(ft.Container):
             self.progress_bar.value = value
         if self.progress_text and text:
             self.progress_text.value = text
-        self.page.update()
+        self.app_page.update()
 
     def on_stop_click(self, e) -> None:
         """Callback to cancel the running background task cooperatively."""
@@ -199,7 +199,7 @@ class BaseToolFrame(ft.Container):
                 self.is_running = False
                 self._set_controls_state(disabled=False)
                 self.update_progress(0.0, "已就绪")
-                self.page.update()
+                self.app_page.update()
 
         self.current_thread = threading.Thread(target=wrapper, daemon=True)
         self.current_thread.start()
@@ -212,13 +212,13 @@ class BaseToolFrame(ft.Container):
             self.run_btn.disabled = disabled
         if self.stop_btn:
             self.stop_btn.disabled = not disabled
-        self.page.update()
+        self.app_page.update()
 
     def show_dialog(self, title: str, content: str) -> None:
         """Show an alert dialog to the user."""
         def close_dlg(e) -> None:
             dialog.open = False
-            self.page.update()
+            self.app_page.update()
 
         dialog = ft.AlertDialog(
             title=ft.Text(title),
@@ -226,9 +226,9 @@ class BaseToolFrame(ft.Container):
             actions=[ft.TextButton("确定", on_click=close_dlg)],
             actions_alignment=ft.MainAxisAlignment.END,
         )
-        self.page.overlay.append(dialog)
+        self.app_page.overlay.append(dialog)
         dialog.open = True
-        self.page.update()
+        self.app_page.update()
 
 
 def create_section_container(title: str, controls: list[ft.Control]) -> ft.Container:

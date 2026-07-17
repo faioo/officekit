@@ -1,6 +1,6 @@
 openpyxl>=3.1.0
 requests>=2.28.0
-flet>=0.22.0
+flet==0.28.3
 pyinstaller>=6.0.0
 pytest>=8.0.0
 pytest-mock>=3.12.0

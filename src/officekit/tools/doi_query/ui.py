@@ -100,7 +100,7 @@ class DOIQueryFrame(BaseToolFrame):
     def build_ui(self) -> ft.Control:
         # Use a single picker with mode dispatch; macOS uses native AppleScript first.
         self.file_picker = ft.FilePicker(on_result=self.on_picker_result)
-        self.page.overlay.append(self.file_picker)
+        self.app_page.overlay.append(self.file_picker)
 
         # Section 1: Files
         section_files = create_section_container(
@@ -296,7 +296,7 @@ class DOIQueryFrame(BaseToolFrame):
         except Exception as ex:
             self.log(f"工作表解析失败: {str(ex)}", level="WARNING")
 
-        self.page.update()
+        self.app_page.update()
 
     def on_output_selected(self, e: ft.FilePickerResultEvent) -> None:
         """Handle output file path selection."""
@@ -313,7 +313,7 @@ class DOIQueryFrame(BaseToolFrame):
                 self.prefs.set(self.TOOL_ID, "output_dir", parent_dir)
             except Exception:
                 pass
-        self.page.update()
+        self.app_page.update()
 
     def on_start_click(self, e) -> None:
         """Handle start button click."""

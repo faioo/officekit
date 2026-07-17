@@ -70,7 +70,7 @@ class Word2ImgFrame(BaseToolFrame):
     def build_ui(self) -> ft.Control:
         # A single picker with mode dispatch avoids picker state conflicts on desktop.
         self.file_picker = ft.FilePicker(on_result=self.on_picker_result)
-        self.page.overlay.append(self.file_picker)
+        self.app_page.overlay.append(self.file_picker)
 
         # Sections
         section_files = create_section_container(
@@ -193,7 +193,7 @@ class Word2ImgFrame(BaseToolFrame):
         def close_dialog() -> None:
             if self.input_source_dialog:
                 self.input_source_dialog.open = False
-            self.page.update()
+            self.app_page.update()
 
         def choose_files(_) -> None:
             close_dialog()
@@ -213,9 +213,9 @@ class Word2ImgFrame(BaseToolFrame):
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
-        self.page.overlay.append(self.input_source_dialog)
+        self.app_page.overlay.append(self.input_source_dialog)
         self.input_source_dialog.open = True
-        self.page.update()
+        self.app_page.update()
 
     def open_input_files_picker(self) -> None:
         """Open native picker for one or more Word files."""
@@ -299,7 +299,7 @@ class Word2ImgFrame(BaseToolFrame):
                 "仅支持 .doc / .docx 文件，以下文件未加入任务：\n"
                 + "\n".join(Path(path).name for path in invalid_files[:5]),
             )
-        self.page.update()
+        self.app_page.update()
 
     def on_input_dir_selected(self, e: ft.FilePickerResultEvent) -> None:
         """Called when an input directory is selected."""
@@ -311,7 +311,7 @@ class Word2ImgFrame(BaseToolFrame):
         self.selected_folder = folder_path
         self.selected_files = []  # Clear files selection
         self.file_path_field.value = f"已选择文件夹: {self.selected_folder}"
-        self.page.update()
+        self.app_page.update()
 
     def on_output_dir_selected(self, e: ft.FilePickerResultEvent) -> None:
         """Called when an output directory is selected."""
@@ -323,7 +323,7 @@ class Word2ImgFrame(BaseToolFrame):
         self.output_dir_field.value = folder_path
         if self.TOOL_ID:
             self.prefs.set(self.TOOL_ID, "output_dir", folder_path)
-        self.page.update()
+        self.app_page.update()
 
     def on_start_click(self, e) -> None:
         """Handle run button click."""

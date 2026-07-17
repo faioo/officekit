@@ -10,7 +10,12 @@ class MainAppLayout(ft.Row):
     """Layout manager coordinating sidebar NavigationRail and active subpages."""
 
     def __init__(self, page: ft.Page, **kwargs) -> None:
-        self.page = page
+        if not REGISTERED_TOOLS:
+            raise RuntimeError(
+                "No OfficeKit tools were registered; reinstall the application "
+                "or review the startup log."
+            )
+        self.app_page = page
 
         # Lazy instantiation of tool subpages to optimize cold start performance
         self.tool_instances = {}
@@ -62,11 +67,11 @@ class MainAppLayout(ft.Row):
         # Lazy instantiate tool frame class on-demand and cache it
         if tool_id not in self.tool_instances:
             tool_class = load_tool_class(tool.class_path)
-            self.tool_instances[tool_id] = tool_class(self.page)
+            self.tool_instances[tool_id] = tool_class(self.app_page)
 
         # Update display control and refresh page
         self.content_container.content = self.tool_instances[tool_id]
-        self.page.update()
+        self.app_page.update()
 
 
 def main_gui(page: ft.Page) -> None:

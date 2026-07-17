@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import flet as ft
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from officekit.tools.doi_query.ui import DOIQueryFrame
@@ -98,7 +99,7 @@ def test_doi_ui_output_picker_uses_macos_native_selector(mocker):
 
     frame.open_output_file_picker(None)
 
-    assert frame.output_path_field.value == "/path/to/doi_results.xlsx"
+    assert frame.output_path_field.value == str(Path("/path/to/doi_results.xlsx"))
     frame.file_picker.save_file.assert_not_called()
     page_mock.update.assert_called()
 
