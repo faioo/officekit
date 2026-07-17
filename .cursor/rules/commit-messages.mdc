@@ -1,0 +1,42 @@
+---
+description: Git commit message convention for this repository (Conventional Commits)
+alwaysApply: true
+---
+
+# Commit Message Convention
+
+All git commit messages in this repository MUST follow
+[Conventional Commits](https://www.conventionalcommits.org/): a lowercase type
+prefix, an optional scope, and a concise imperative summary.
+
+## Format
+
+```text
+<type>(<optional-scope>): <summary>
+
+<optional body>
+```
+
+- Type is required and lowercase. Allowed types:
+  - `feat` — a new feature
+  - `fix` — a bug fix
+  - `test` — adding or improving tests only
+  - `docs` — documentation only
+  - `refactor` — code change that neither fixes a bug nor adds a feature
+  - `perf` — performance improvement
+  - `chore` — build, deps, tooling, or housekeeping
+  - `ci` — CI/CD configuration changes
+- Scope is optional; use the affected module when helpful (e.g. `doi_query`,
+  `word2img`, `ui`, `registry`, `build`).
+- Summary is imperative and concise (no trailing period).
+- Write in English. Do NOT use an `FM-xxx` (or any Jira-style) prefix.
+- Use a body (after a blank line) with `-` bullets for multi-part changes.
+
+## Examples
+
+```text
+test: add FakePage harness for UI wiring and boot coverage
+fix(doi_query): stop button now cancels the batch immediately
+refactor(registry): register built-in tools via a single explicit path
+ci: add Ruff lint and a py3.9/3.12 test matrix
+```

@@ -6,7 +6,25 @@ from or write to the user's real ``~/.officekit/preferences.json`` file.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
+
+# Make ``tests`` importable so shared helpers under ``tests/support`` can be
+# imported as ``from support.fake_page import ...`` regardless of pytest's
+# import mode.
+_TESTS_DIR = str(Path(__file__).parent)
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
+
+from support.fake_page import FakePage  # noqa: E402
+
+
+@pytest.fixture
+def fake_page() -> FakePage:
+    """Return a fresh lightweight :class:`FakePage` for UI wiring/boot tests."""
+    return FakePage()
 
 
 @pytest.fixture(autouse=True)
