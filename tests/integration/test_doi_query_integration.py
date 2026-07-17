@@ -56,7 +56,18 @@ def test_enrich_excel_integration(mocker, tmp_path):
     }
     response_3.raise_for_status = MagicMock()
 
-    mock_get.side_effect = [response_1, response_2, response_3]
+    # Dispatch by query content rather than call order: the core runs queries
+    # concurrently (ThreadPoolExecutor), so the order in which ``get`` is called
+    # is non-deterministic and must not decide which response a row receives.
+    def fake_get(url, params=None, timeout=None):
+        query = (params or {}).get("query.bibliographic", "")
+        if "Attention Is All You Need" in query:
+            return response_1
+        if "Deep Residual Learning" in query:
+            return response_2
+        return response_3
+
+    mock_get.side_effect = fake_get
 
     # 3. Setup progress callback tracker
     callback_records = []

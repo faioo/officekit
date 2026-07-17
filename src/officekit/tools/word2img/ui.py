@@ -2,23 +2,23 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
+
 import flet as ft
 
-from officekit.core.registry import register_tool
 from officekit.ui.base import BaseToolFrame, create_section_container
 from officekit.ui.file_dialogs import select_macos_directory, select_macos_files
 from officekit.tools.word2img.core import SUPPORTED_WORD_SUFFIXES, convert_word_to_images
 
 
-@register_tool(
-    id_="word2img",
-    name="Word 转图片",
-    icon_name="IMAGE_OUTLINED",
-    selected_icon_name="IMAGE",
-)
 class Word2ImgFrame(BaseToolFrame):
-    """Word to Image tool interface with batch and directory support."""
+    """Word to Image tool interface with batch and directory support.
+
+    Registered as a built-in via ``_register_builtin_tools`` in
+    :mod:`officekit.core.registry`; third-party tools should instead use the
+    ``@register_tool`` decorator for zero-intrusion discovery.
+    """
 
     TOOL_ID = "word2img"
 
@@ -357,7 +357,6 @@ class Word2ImgFrame(BaseToolFrame):
         cancel_event: threading.Event | None = None,
     ) -> None:
         """Synchronous task executed in the background thread."""
-        import threading
         files_to_convert: list[Path] = []
 
         if self.selected_folder:
@@ -371,7 +370,7 @@ class Word2ImgFrame(BaseToolFrame):
             )
             
             if not files_to_convert:
-                self.log(f"在文件夹中未找到任何支持的 Word 文档 (.doc, .docx)", level="WARNING")
+                self.log("在文件夹中未找到任何支持的 Word 文档 (.doc, .docx)", level="WARNING")
                 self.show_dialog("警告", "所选文件夹中未找到任何支持的 Word 文档！")
                 return
             self.log(f"扫描完毕，共发现 {len(files_to_convert)} 个 Word 文档待转换。")
@@ -412,7 +411,7 @@ class Word2ImgFrame(BaseToolFrame):
                 self.log(f"[{index}/{total_files}] 转换失败！原因: {str(ex)}", level="ERROR")
 
         self.log("=" * 50)
-        self.log(f"批量转换任务结束！")
+        self.log("批量转换任务结束！")
         self.log(f"成功: {success_count} / {total_files}")
         if total_files - success_count > 0:
             self.log(f"失败: {total_files - success_count}", level="WARNING")

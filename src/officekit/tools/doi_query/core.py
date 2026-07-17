@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import concurrent.futures
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -73,9 +76,6 @@ def enrich_excel_with_doi(
     cancel_event: threading.Event | None = None,
 ) -> DOIQuerySummary:
     """Read an Excel file, append a DOI column, and save a new workbook."""
-    from typing import Callable
-    import concurrent.futures
-    import threading
     source = Path(input_path).expanduser().resolve()
     if not source.exists():
         raise FileNotFoundError(f"Excel file not found: {source}")
@@ -112,7 +112,11 @@ def enrich_excel_with_doi(
             session = requests.Session()
             completed = 0
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            # Managed manually (instead of a ``with`` block) so cancellation can
+            # tear the pool down immediately via ``cancel_futures`` rather than
+            # blocking on ``shutdown(wait=True)`` until every queued task drains.
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+            try:
                 # Submit tasks and keep their order
                 futures = []
                 for row_idx, title, journal, year in tasks:
@@ -129,6 +133,7 @@ def enrich_excel_with_doi(
                 # Wait for results and write back in row-index order
                 for row_idx, title, future in futures:
                     if cancel_event and cancel_event.is_set():
+                        executor.shutdown(wait=False, cancel_futures=True)
                         raise InterruptedError("DOI 批量查询已被用户终止。")
 
                     try:
@@ -146,6 +151,9 @@ def enrich_excel_with_doi(
                     completed += 1
                     if progress_callback:
                         progress_callback(completed, total, str(title or ""), doi)
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
+                session.close()
 
         workbook.save(destination)
     finally:

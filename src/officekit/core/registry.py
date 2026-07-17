@@ -63,7 +63,13 @@ def register_tool(
     icon_name: str,
     selected_icon_name: str,
 ):
-    """Class decorator to register a tool frame class into the central registry."""
+    """Class decorator to register a tool frame class into the central registry.
+
+    This is the zero-intrusion extension path for *third-party* tools dropped
+    into ``officekit/tools/``. Built-in tools are registered explicitly in
+    :func:`_register_builtin_tools` (single source of truth) so that frozen
+    PyInstaller builds, where package enumeration may be empty, still ship them.
+    """
     def decorator(cls: type[ft.Control]) -> type[ft.Control]:
         metadata = ToolMetadata(
             id_=id_,

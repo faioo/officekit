@@ -8,19 +8,23 @@ OfficeKit 是一个面向办公自动化的小工具集合，自带现代化、�
 src/
 └── officekit/
     ├── main.py
+    ├── version.py          # 版本号解析 (Git tag / 环境变量 / 构建期生成)
     ├── core/
     │   ├── config.py
+    │   ├── preferences.py  # 各工具 UI 偏好持久化 (~/.officekit/preferences.json)
     │   └── registry.py     # 统一工具注册表 (零入侵扩展)
     ├── ui/
     │   ├── app.py          # GUI 主窗口布局 (懒加载与状态缓存)
-    │   └── base.py         # GUI 统一二级子页面基类
+    │   ├── base.py         # GUI 统一二级子页面基类
+    │   └── file_dialogs.py # 跨平台原生文件选择器
     └── tools/
         ├── doi_query/
         │   ├── core.py     # DOI 查询业务逻辑
         │   └── ui.py       # DOI 查询二级子页面
         └── word2img/
-            ├── core.py     # Word 转图片业务逻辑
-            └── ui.py       # Word 转图片二级子页面
+            ├── core.py         # Word 转图片业务逻辑
+            ├── converters.py   # Word -> PDF 后端 (Word COM / LibreOffice)
+            └── ui.py           # Word 转图片二级子页面
 ```
 
 ## 运行入口
@@ -107,25 +111,26 @@ brew install poppler
 
 OfficeKit 的 GUI 采用**零入侵模块化设计**。如果你想新增一个“工具 C”：
 
-1. **新建工具文件夹**：在 `src/officekit/tools/tool_c/` 下开发你的业务逻辑 `core.py`、命令行 `cli.py`。
-2. **实现 GUI 子页面**：在同一个文件夹下创建 `ui.py`，新建一个类继承并实现 `BaseToolFrame`：
+1. **新建工具文件夹**：在 `src/officekit/tools/tool_c/` 下开发你的业务逻辑 `core.py`。
+2. **实现并注册 GUI 子页面**：在同一个文件夹下创建 `ui.py`，新建一个类继承并实现 `BaseToolFrame`，并使用 `@register_tool` 装饰器完成零入侵注册：
    ```python
    import flet as ft
+   from officekit.core.registry import register_tool
    from officekit.ui.base import BaseToolFrame
 
+   @register_tool(
+       id_="tool_c",
+       name="新工具 C",
+       icon_name="AUTO_AWESOME_OUTLINED",
+       selected_icon_name="AUTO_AWESOME",
+   )
    class ToolCFrame(BaseToolFrame):
+       TOOL_ID = "tool_c"
+
        def build_ui(self) -> ft.Control:
            # 你的 UI 控件布局
            return ft.Column([ft.Text("这是新工具 C")])
    ```
-3. **注册新工具**：打开 `[src/officekit/ui/registry.py](src/officekit/ui/registry.py)`，在 `REGISTERED_TOOLS` 中追加一项：
-   ```python
-   {
-       "id": "tool_c",
-       "name": "新工具 C",
-       "icon": ft.Icons.AUTO_AWESOME_OUTLINED,
-       "selected_icon": ft.Icons.AUTO_AWESOME,
-       "class": ToolCFrame,
-   }
-   ```
-   重启程序后，左侧导航栏将全自动增加该按钮，并动态支持子页面的状态留存和无缝切换！
+   `discover_tools()` 会在启动时自动导入 `tools/` 下每个子包的 `ui` 模块，触发装饰器注册。重启程序后，左侧导航栏将全自动增加该按钮，并动态支持子页面的状态留存和无缝切换！
+
+   > 说明：两个内置工具（`word2img`、`doi_query`）在 [src/officekit/core/registry.py](src/officekit/core/registry.py) 的 `_register_builtin_tools()` 中显式注册，以保证 PyInstaller 冻结打包（包枚举可能为空）时仍可用；第三方工具则统一走上面的 `@register_tool` 装饰器路径。

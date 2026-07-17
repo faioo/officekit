@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-import os
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import tempfile
 import threading
+import time
 import traceback
 from collections.abc import Callable
 from typing import Any
@@ -51,6 +51,9 @@ class BaseToolFrame(ft.Container):
 
     TOOL_ID: str | None = None
 
+    # Minimum seconds between throttled UI flushes for high-frequency log output.
+    _LOG_UPDATE_MIN_INTERVAL = 0.1
+
     def __init__(self, page: ft.Page, **kwargs) -> None:
         super().__init__(expand=True, padding=20, **kwargs)
         self.app_page = page
@@ -64,9 +67,23 @@ class BaseToolFrame(ft.Container):
         self._cancel_event = threading.Event()
         self.current_thread: threading.Thread | None = None
         self.prefs: PreferencesStore = get_preferences_store()
+        self._last_log_update = 0.0
 
         # Build the main layout
         self.content = self.build_ui()
+
+    def _apply_page_update(self) -> None:
+        """Single guarded entry point for pushing UI changes to the Flet page.
+
+        All page refreshes -- including those triggered from background worker
+        threads (logging, progress, control state) -- are funnelled through
+        here so a transient Flet update failure is logged instead of killing
+        the worker thread.
+        """
+        try:
+            self.app_page.update()
+        except Exception:
+            logger.exception("Flet page update failed")
 
     def bind_pref(
         self,
@@ -156,7 +173,13 @@ class BaseToolFrame(ft.Container):
         lines.append(f"{prefix}{message}")
 
         self.log_area.value = "\n".join(lines) + "\n"
-        self.app_page.update()
+
+        # Throttle high-frequency INFO/DEBUG flushes; always flush warnings and
+        # above so important messages are never delayed behind the interval.
+        now = time.monotonic()
+        if level_num >= logging.WARNING or (now - self._last_log_update) >= self._LOG_UPDATE_MIN_INTERVAL:
+            self._last_log_update = now
+            self._apply_page_update()
 
     def update_progress(self, value: float | None, text: str = "") -> None:
         """Thread-safe progress updates. Value should be between 0.0 and 1.0 (or None for indeterminate)."""
@@ -164,7 +187,7 @@ class BaseToolFrame(ft.Container):
             self.progress_bar.value = value
         if self.progress_text and text:
             self.progress_text.value = text
-        self.app_page.update()
+        self._apply_page_update()
 
     def on_stop_click(self, e) -> None:
         """Callback to cancel the running background task cooperatively."""
@@ -199,7 +222,7 @@ class BaseToolFrame(ft.Container):
                 self.is_running = False
                 self._set_controls_state(disabled=False)
                 self.update_progress(0.0, "已就绪")
-                self.app_page.update()
+                self._apply_page_update()
 
         self.current_thread = threading.Thread(target=wrapper, daemon=True)
         self.current_thread.start()
@@ -212,13 +235,13 @@ class BaseToolFrame(ft.Container):
             self.run_btn.disabled = disabled
         if self.stop_btn:
             self.stop_btn.disabled = not disabled
-        self.app_page.update()
+        self._apply_page_update()
 
     def show_dialog(self, title: str, content: str) -> None:
         """Show an alert dialog to the user."""
         def close_dlg(e) -> None:
             dialog.open = False
-            self.app_page.update()
+            self._apply_page_update()
 
         dialog = ft.AlertDialog(
             title=ft.Text(title),
@@ -228,7 +251,7 @@ class BaseToolFrame(ft.Container):
         )
         self.app_page.overlay.append(dialog)
         dialog.open = True
-        self.app_page.update()
+        self._apply_page_update()
 
 
 def create_section_container(title: str, controls: list[ft.Control]) -> ft.Container:

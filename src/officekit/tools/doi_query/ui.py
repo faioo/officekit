@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
-import flet as ft
 
-from officekit.core.registry import register_tool
+import flet as ft
+import openpyxl
+
 from officekit.ui.base import BaseToolFrame, create_section_container
 from officekit.ui.file_dialogs import select_macos_file, select_macos_save_file
 from officekit.tools.doi_query.core import enrich_excel_with_doi
@@ -13,14 +15,13 @@ from officekit.tools.doi_query.core import enrich_excel_with_doi
 DOI_DEFAULT_OUTPUT_FILENAME = "doi_results.xlsx"
 
 
-@register_tool(
-    id_="doi_query",
-    name="DOI 查询",
-    icon_name="SEARCH_OUTLINED",
-    selected_icon_name="SEARCH",
-)
 class DOIQueryFrame(BaseToolFrame):
-    """DOI Query tool interface."""
+    """DOI Query tool interface.
+
+    Registered as a built-in via ``_register_builtin_tools`` in
+    :mod:`officekit.core.registry`; third-party tools should instead use the
+    ``@register_tool`` decorator for zero-intrusion discovery.
+    """
 
     TOOL_ID = "doi_query"
 
@@ -250,7 +251,7 @@ class DOIQueryFrame(BaseToolFrame):
         """Open native picker for the output Excel path."""
         selected_path = select_macos_save_file(
             "选择 DOI 结果保存路径",
-            default_name="doi_results.xlsx",
+            default_name=DOI_DEFAULT_OUTPUT_FILENAME,
             log=self.log,
         )
         if selected_path is not None:
@@ -259,7 +260,9 @@ class DOIQueryFrame(BaseToolFrame):
             return
 
         self.picker_mode = "output_file"
-        self.file_picker.save_file(allowed_extensions=["xlsx"], file_name="doi_results.xlsx")
+        self.file_picker.save_file(
+            allowed_extensions=["xlsx"], file_name=DOI_DEFAULT_OUTPUT_FILENAME
+        )
 
     def on_picker_result(self, e: ft.FilePickerResultEvent) -> None:
         """Dispatch single FilePicker result by the requested mode."""
@@ -285,7 +288,6 @@ class DOIQueryFrame(BaseToolFrame):
 
         # Extract sheet names using openpyxl
         try:
-            import openpyxl
             wb = openpyxl.load_workbook(file_path, read_only=True)
             sheets = wb.sheetnames
             wb.close()
@@ -364,7 +366,6 @@ class DOIQueryFrame(BaseToolFrame):
         cancel_event: threading.Event | None = None,
     ) -> None:
         """Background task handler."""
-        import threading
         self.log(f"正在加载 Excel 工作簿: {Path(input_file).name}...")
 
         # Keep stats counters
