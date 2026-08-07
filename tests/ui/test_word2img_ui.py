@@ -16,11 +16,29 @@ def test_word2img_ui_initialization():
     frame = Word2ImgFrame(page_mock)
 
     assert frame.file_path_field.label == "输入 Word 文件或文件夹"
-    assert frame.output_dir_field.label == "图片输出目录 (留空则输出到各文档同级目录)"
+    assert frame.output_dir_field.label == "输出目录 (留空则输出到各文档同级目录)"
     assert frame.file_path_field.read_only is True
+    assert frame.output_mode_radio.value == "image"
     assert frame.dpi_dropdown.value == "150"
     assert frame.format_radio.value == "png"
+    assert frame.image_options_row.visible is True
     assert frame.run_btn.text == "▶ 开始转换"
+
+
+def test_word2img_ui_hides_image_options_for_pdf_mode():
+    """Selecting PDF output should hide image format and DPI controls."""
+    page_mock = MagicMock()
+    frame = Word2ImgFrame(page_mock)
+
+    frame.output_mode_radio.value = "pdf"
+    frame.on_output_mode_change(None)
+
+    assert frame.image_options_row.visible is False
+
+    frame.output_mode_radio.value = "image"
+    frame.on_output_mode_change(None)
+
+    assert frame.image_options_row.visible is True
 
 
 def test_word2img_ui_single_file_selection():
@@ -211,6 +229,7 @@ def test_word2img_ui_task_execution_multiple_files(mocker):
     # Fill inputs
     frame.selected_files = ["/path/to/doc1.docx", "/path/to/doc2.doc"]
     frame.output_dir_field.value = "/path/to/out"
+    frame.output_mode_radio.value = "image"
     frame.format_radio.value = "png"
     frame.dpi_dropdown.value = "150"
 
@@ -237,7 +256,49 @@ def test_word2img_ui_task_execution_multiple_files(mocker):
         image_format="png",
         dpi=150,
     )
-    
+
     assert "批量转换任务结束！" in frame.log_area.value
     assert "成功: 2 / 2" in frame.log_area.value
     frame.show_dialog.assert_called_once()
+
+
+def test_word2img_ui_task_execution_pdf_mode(mocker):
+    """PDF output mode should call convert_word_to_pdf instead of image conversion."""
+    page_mock = MagicMock()
+    frame = Word2ImgFrame(page_mock)
+
+    mock_convert_pdf = mocker.patch(
+        "officekit.tools.word2img.ui.convert_word_to_pdf",
+        return_value=Path("/path/to/out/doc1.pdf"),
+    )
+    mock_convert_images = mocker.patch(
+        "officekit.tools.word2img.ui.convert_word_to_images",
+    )
+    frame.show_dialog = MagicMock()
+
+    frame.selected_files = ["/path/to/doc1.docx", "/path/to/doc2.doc"]
+    frame.output_dir_field.value = "/path/to/out"
+    frame.output_mode_radio.value = "pdf"
+
+    frame.on_start_click(None)
+
+    timeout = 10
+    while frame.is_running and timeout > 0:
+        time.sleep(0.05)
+        timeout -= 1
+
+    assert mock_convert_pdf.call_count == 2
+    mock_convert_pdf.assert_any_call(
+        input_path=Path("/path/to/doc1.docx"),
+        output_dir="/path/to/out",
+    )
+    mock_convert_pdf.assert_any_call(
+        input_path=Path("/path/to/doc2.doc"),
+        output_dir="/path/to/out",
+    )
+    mock_convert_images.assert_not_called()
+
+    assert "批量转换任务结束！" in frame.log_area.value
+    assert "成功: 2 / 2" in frame.log_area.value
+    frame.show_dialog.assert_called_once()
+    assert "PDF" in frame.show_dialog.call_args[0][1]

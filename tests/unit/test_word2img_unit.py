@@ -7,6 +7,7 @@ from pathlib import Path
 
 from officekit.tools.word2img.core import (
     convert_word_to_images,
+    convert_word_to_pdf,
     _command_env,
     _find_command,
 )
@@ -53,7 +54,7 @@ def test_find_command_missing(mocker):
     mocker.patch("officekit.tools.word2img.core.COMMON_COMMAND_PATHS", {})
     with pytest.raises(RuntimeError) as exc_info:
         _find_command("soffice", "libreoffice")
-    assert "缺少 Word 转图片依赖" in str(exc_info.value)
+    assert "缺少 Word 转换依赖" in str(exc_info.value)
     assert "brew install --cask libreoffice" in str(exc_info.value)
 
 
@@ -185,6 +186,87 @@ def test_find_command_missing_pdftoppm_lists_checked_vendor_paths(mocker, tmp_pa
     message = str(exc_info.value)
     assert str(vendor_dir / "poppler" / "bin" / "pdftoppm.exe") in message
     assert str(vendor_dir / "poppler" / "Library" / "bin" / "pdftoppm.exe") in message
+
+
+def test_convert_word_to_pdf_file_not_found():
+    """Missing input file should raise FileNotFoundError."""
+    with pytest.raises(FileNotFoundError) as exc_info:
+        convert_word_to_pdf("nonexistent_doc.docx")
+    assert "Word document not found" in str(exc_info.value)
+
+
+def test_convert_word_to_pdf_unsupported_suffix(tmp_path):
+    """Unsupported document file extension should raise ValueError."""
+    temp_file = tmp_path / "test.txt"
+    temp_file.write_text("dummy content")
+
+    with pytest.raises(ValueError) as exc_info:
+        convert_word_to_pdf(temp_file)
+    assert "Unsupported Word document type" in str(exc_info.value)
+
+
+def test_convert_word_to_pdf_defaults_to_source_directory(mocker, tmp_path):
+    """Generated PDF should be written next to the source document by default."""
+    docx_file = tmp_path / "test_doc.docx"
+    docx_file.write_text("mock content")
+    expected_pdf = tmp_path / "test_doc.pdf"
+
+    mock_find = mocker.patch("officekit.tools.word2img.core._find_command")
+    mock_pdf = mocker.patch(
+        "officekit.tools.word2img.core._convert_to_pdf",
+        return_value=expected_pdf,
+    )
+    expected_pdf.write_text("mock pdf")
+
+    result = convert_word_to_pdf(docx_file)
+
+    assert result == expected_pdf
+    mock_pdf.assert_called_once_with(docx_file.resolve(), tmp_path.resolve())
+    mock_find.assert_not_called()
+
+
+def test_convert_word_to_pdf_successful_flow(mocker, tmp_path):
+    """Verify PDF conversion writes to the requested output directory without pdftoppm."""
+    docx_file = tmp_path / "test_doc.docx"
+    docx_file.write_text("mock content")
+    output_dir = tmp_path / "pdfs"
+    expected_pdf = output_dir / "test_doc.pdf"
+
+    mock_find = mocker.patch("officekit.tools.word2img.core._find_command")
+
+    def fake_convert_to_pdf(source, dest):
+        dest.mkdir(parents=True, exist_ok=True)
+        pdf_path = dest / f"{source.stem}.pdf"
+        pdf_path.write_text("mock pdf")
+        return pdf_path
+
+    mock_pdf = mocker.patch(
+        "officekit.tools.word2img.core._convert_to_pdf",
+        side_effect=fake_convert_to_pdf,
+    )
+
+    result = convert_word_to_pdf(docx_file, output_dir=output_dir)
+
+    assert result == expected_pdf
+    assert expected_pdf.exists()
+    mock_pdf.assert_called_once()
+    mock_find.assert_not_called()
+
+
+def test_convert_word_to_pdf_raises_when_pdf_missing(mocker, tmp_path):
+    """If the backend reports a path that does not exist, raise RuntimeError."""
+    docx_file = tmp_path / "test_doc.docx"
+    docx_file.write_text("mock content")
+    missing_pdf = tmp_path / "missing.pdf"
+
+    mocker.patch(
+        "officekit.tools.word2img.core._convert_to_pdf",
+        return_value=missing_pdf,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        convert_word_to_pdf(docx_file)
+    assert "No PDF was generated" in str(exc_info.value)
 
 
 def test_convert_word_to_images_defaults_to_source_directory(mocker, tmp_path):

@@ -1,4 +1,4 @@
-"""Business logic for converting Word documents to images."""
+"""Business logic for converting Word documents to images or PDF."""
 
 from __future__ import annotations
 
@@ -44,6 +44,34 @@ COMMON_COMMAND_PATHS = {
 }
 
 
+def _resolve_word_source(input_path: str | Path) -> Path:
+    """Validate and resolve a Word document path."""
+    source = Path(input_path).expanduser().resolve()
+    if not source.exists():
+        raise FileNotFoundError(f"Word document not found: {source}")
+
+    if source.suffix.lower() not in SUPPORTED_WORD_SUFFIXES:
+        supported = ", ".join(sorted(SUPPORTED_WORD_SUFFIXES))
+        raise ValueError(f"Unsupported Word document type: {source.suffix}. Expected {supported}.")
+
+    return source
+
+
+def convert_word_to_pdf(
+    input_path: str | Path,
+    output_dir: str | Path | None = None,
+) -> Path:
+    """Convert a Word document to a PDF file in ``output_dir`` (or next to the source)."""
+    source = _resolve_word_source(input_path)
+    destination = Path(output_dir).expanduser().resolve() if output_dir else source.parent
+    destination.mkdir(parents=True, exist_ok=True)
+
+    pdf_path = _convert_to_pdf(source, destination)
+    if not pdf_path.exists():
+        raise RuntimeError("No PDF was generated from the Word document.")
+    return pdf_path
+
+
 def convert_word_to_images(
     input_path: str | Path,
     output_dir: str | Path | None = None,
@@ -52,13 +80,7 @@ def convert_word_to_images(
     dpi: int = 150,
 ) -> list[Path]:
     """Convert a Word document into one image per page."""
-    source = Path(input_path).expanduser().resolve()
-    if not source.exists():
-        raise FileNotFoundError(f"Word document not found: {source}")
-
-    if source.suffix.lower() not in SUPPORTED_WORD_SUFFIXES:
-        supported = ", ".join(sorted(SUPPORTED_WORD_SUFFIXES))
-        raise ValueError(f"Unsupported Word document type: {source.suffix}. Expected {supported}.")
+    source = _resolve_word_source(input_path)
 
     image_format = image_format.lower()
     if image_format not in SUPPORTED_IMAGE_FORMATS:
@@ -201,7 +223,7 @@ def _missing_command_message(names: tuple[str, ...]) -> str:
             )
 
     hint_text = "\n".join(hints) if hints else "请安装对应命令后重试。"
-    return f"缺少 Word 转图片依赖: 未找到 {missing_commands}。\n{hint_text}"
+    return f"缺少 Word 转换依赖: 未找到 {missing_commands}。\n{hint_text}"
 
 
 def _run(command: list[str]) -> None:

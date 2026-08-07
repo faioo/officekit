@@ -22,9 +22,9 @@ src/
         │   ├── core.py     # DOI 查询业务逻辑
         │   └── ui.py       # DOI 查询二级子页面
         └── word2img/
-            ├── core.py         # Word 转图片业务逻辑
+            ├── core.py         # Word 转图片 / PDF 业务逻辑
             ├── converters.py   # Word -> PDF 后端 (Word COM / LibreOffice)
-            └── ui.py           # Word 转图片二级子页面
+            └── ui.py           # Word 转换二级子页面
 ```
 
 ## 运行入口
@@ -45,14 +45,17 @@ PYTHONPATH=src python -m officekit.main
 
 ## 功能组件说明
 
-### 1. Word 转图片工具 (`word2img`)
+### 1. Word 转换工具 (`word2img`)
 
-利用系统底层工具链：先使用 LibreOffice 将 `.doc` 或 `.docx` 转换为临时 PDF，再使用 Poppler 的 `pdftoppm` 将 PDF 的每一页高精还原并导出为图片（支持 PNG、JPEG）。
+将 `.doc` / `.docx` 批量转换为 **图片**（PNG、JPEG）或 **PDF**。
+
+- **输出 PDF**：Windows 优先使用 Microsoft Word COM，失败或不支持时回退到 LibreOffice（`soffice`）。
+- **输出图片**：先转为临时 PDF，再用 Poppler 的 `pdftoppm` 按页导出（可设 DPI）。
 
 源码方式运行时，需要提前在系统中安装以下工具命令：
 
-- `soffice` 或 `libreoffice`
-- `pdftoppm`
+- `soffice` 或 `libreoffice`（PDF 与图片模式都可能需要；Windows 已装 Word 时可走 COM）
+- `pdftoppm`（仅图片模式需要）
 
 macOS 推荐安装方式：
 
@@ -61,7 +64,7 @@ brew install --cask libreoffice
 brew install poppler
 ```
 
-说明：正式发布的 macOS `OfficeKit.app` 会内置 LibreOffice 和 Poppler，并优先使用 `.app/Contents/Resources/vendor/` 下的工具；源码开发模式下会自动查找 `/Applications/LibreOffice.app/Contents/MacOS/soffice`、Homebrew 常见路径中的 `soffice` 和 `pdftoppm`。如果未找到这些外部转换工具，Word 转图片会给出明确的缺失依赖提示。
+说明：正式发布的 macOS `OfficeKit.app` 会内置 LibreOffice 和 Poppler，并优先使用 `.app/Contents/Resources/vendor/` 下的工具；源码开发模式下会自动查找 `/Applications/LibreOffice.app/Contents/MacOS/soffice`、Homebrew 常见路径中的 `soffice` 和 `pdftoppm`。如果未找到这些外部转换工具，Word 转换会给出明确的缺失依赖提示。
 
 ### 2. DOI 查询工具 (`doi_query`)
 

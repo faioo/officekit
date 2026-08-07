@@ -1,4 +1,4 @@
-"""Flet GUI subpage for the Word to image tool."""
+"""Flet GUI subpage for the Word conversion tool."""
 
 from __future__ import annotations
 
@@ -9,11 +9,15 @@ import flet as ft
 
 from officekit.ui.base import BaseToolFrame, create_section_container
 from officekit.ui.file_dialogs import select_macos_directory, select_macos_files
-from officekit.tools.word2img.core import SUPPORTED_WORD_SUFFIXES, convert_word_to_images
+from officekit.tools.word2img.core import (
+    SUPPORTED_WORD_SUFFIXES,
+    convert_word_to_images,
+    convert_word_to_pdf,
+)
 
 
 class Word2ImgFrame(BaseToolFrame):
-    """Word to Image tool interface with batch and directory support.
+    """Word conversion tool interface with batch and directory support.
 
     Registered as a built-in via ``_register_builtin_tools`` in
     :mod:`officekit.core.registry`; third-party tools should instead use the
@@ -35,10 +39,21 @@ class Word2ImgFrame(BaseToolFrame):
             read_only=True,
         )
         self.output_dir_field = ft.TextField(
-            label="图片输出目录 (留空则输出到各文档同级目录)",
+            label="输出目录 (留空则输出到各文档同级目录)",
             hint_text="点击右侧图标选择输出目录...",
             expand=True,
             read_only=True,
+        )
+        self.output_mode_radio = ft.RadioGroup(
+            content=ft.Row(
+                controls=[
+                    ft.Radio(value="image", label="图片"),
+                    ft.Radio(value="pdf", label="PDF"),
+                ],
+                spacing=20,
+            ),
+            value="image",
+            on_change=self.on_output_mode_change,
         )
         self.format_radio = ft.RadioGroup(
             content=ft.Row(
@@ -60,12 +75,28 @@ class Word2ImgFrame(BaseToolFrame):
             value="150",
             width=200,
         )
+        self.image_options_row = ft.Row(
+            controls=[
+                ft.Column(
+                    controls=[
+                        ft.Text("图片格式:", size=14, weight=ft.FontWeight.W_500),
+                        self.format_radio,
+                    ]
+                ),
+                ft.VerticalDivider(width=30),
+                self.dpi_dropdown,
+            ],
+            alignment=ft.MainAxisAlignment.START,
+            visible=True,
+        )
 
         super().__init__(page, **kwargs)
 
+        self.bind_pref(self.output_mode_radio, "output_mode", default="image")
         self.bind_pref(self.format_radio, "format", default="png")
         self.bind_pref(self.dpi_dropdown, "dpi", default="150")
         self.bind_pref(self.output_dir_field, "output_dir", default="")
+        self._sync_image_options_visibility()
 
     def build_ui(self) -> ft.Control:
         # A single picker with mode dispatch avoids picker state conflicts on desktop.
@@ -91,7 +122,7 @@ class Word2ImgFrame(BaseToolFrame):
                         self.output_dir_field,
                         ft.IconButton(
                             icon=ft.Icons.DRIVE_FILE_MOVE_OUTLINED,
-                            tooltip="选择输出图片保存目录",
+                            tooltip="选择输出目录",
                             on_click=self.open_output_dir_picker,
                         ),
                     ]
@@ -102,18 +133,13 @@ class Word2ImgFrame(BaseToolFrame):
         section_options = create_section_container(
             "2. 转换参数设置",
             [
-                ft.Row(
+                ft.Column(
                     controls=[
-                        ft.Column(
-                            controls=[
-                                ft.Text("输出格式:", size=14, weight=ft.FontWeight.W_500),
-                                self.format_radio,
-                            ]
-                        ),
-                        ft.VerticalDivider(width=30),
-                        self.dpi_dropdown,
+                        ft.Text("输出类型:", size=14, weight=ft.FontWeight.W_500),
+                        self.output_mode_radio,
+                        self.image_options_row,
                     ],
-                    alignment=ft.MainAxisAlignment.START,
+                    spacing=10,
                 )
             ],
         )
@@ -164,14 +190,20 @@ class Word2ImgFrame(BaseToolFrame):
         self.input_controls.extend([
             self.file_path_field,
             self.output_dir_field,
+            self.output_mode_radio,
             self.format_radio,
             self.dpi_dropdown,
         ])
 
         return ft.Column(
             controls=[
-                ft.Text("Word 文档转图片", size=22, weight=ft.FontWeight.BOLD),
-                ft.Text("支持单个文件、多个文件或整个文件夹的 Word 文档 (.doc / .docx) 批量转换为高清图片。", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text("Word 文档转换", size=22, weight=ft.FontWeight.BOLD),
+                ft.Text(
+                    "支持单个文件、多个文件或整个文件夹的 Word 文档 (.doc / .docx) "
+                    "批量转换为图片或 PDF。",
+                    size=14,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
                 ft.Divider(height=20, thickness=1),
                 ft.ListView(
                     controls=[
@@ -186,6 +218,14 @@ class Word2ImgFrame(BaseToolFrame):
             ],
             expand=True,
         )
+
+    def on_output_mode_change(self, e) -> None:
+        """Show image format/DPI only when output type is image."""
+        self._sync_image_options_visibility()
+        self.app_page.update()
+
+    def _sync_image_options_visibility(self) -> None:
+        self.image_options_row.visible = self.output_mode_radio.value != "pdf"
 
     def show_input_source_dialog(self, e) -> None:
         """Let the user choose whether the single input button opens files or a folder."""
@@ -249,7 +289,7 @@ class Word2ImgFrame(BaseToolFrame):
 
     def open_output_dir_picker(self, e) -> None:
         """Open native picker for the output folder."""
-        selected_path = select_macos_directory("选择图片输出目录", log=self.log)
+        selected_path = select_macos_directory("选择输出目录", log=self.log)
         if selected_path is not None:
             if selected_path:
                 self._apply_output_folder_path(selected_path)
@@ -343,18 +383,20 @@ class Word2ImgFrame(BaseToolFrame):
             return
 
         out_dir = self.output_dir_field.value or None
+        output_mode = self.output_mode_radio.value or "image"
         img_format = self.format_radio.value
         dpi = int(self.dpi_dropdown.value or 150)
 
         # Run background thread
-        self.start_task(self.run_conversion_task, out_dir, img_format, dpi)
+        self.start_task(self.run_conversion_task, out_dir, output_mode, img_format, dpi)
 
     def run_conversion_task(
         self,
         out_dir: str | None,
+        output_mode: str,
         img_format: str,
         dpi: int,
-        cancel_event: threading.Event | None = None,
+        cancel_event=None,
     ) -> None:
         """Synchronous task executed in the background thread."""
         files_to_convert: list[Path] = []
@@ -368,7 +410,7 @@ class Word2ImgFrame(BaseToolFrame):
                 for item in folder_path.glob("**/*")
                 if item.is_file() and self._is_supported_word_file(item)
             )
-            
+
             if not files_to_convert:
                 self.log("在文件夹中未找到任何支持的 Word 文档 (.doc, .docx)", level="WARNING")
                 self.show_dialog("警告", "所选文件夹中未找到任何支持的 Word 文档！")
@@ -379,10 +421,11 @@ class Word2ImgFrame(BaseToolFrame):
             self.log(f"已选择 {len(files_to_convert)} 个文件准备转换。")
 
         total_files = len(files_to_convert)
-        self.log(f"开始批量转换 Word 任务，总计 {total_files} 个文件...")
+        mode_label = "PDF" if output_mode == "pdf" else "图片"
+        self.log(f"开始批量转换 Word 为{mode_label}，总计 {total_files} 个文件...")
 
         success_count = 0
-        all_generated_images = []
+        all_generated_outputs: list[Path] = []
 
         for index, file_path in enumerate(files_to_convert, 1):
             if cancel_event and cancel_event.is_set():
@@ -396,17 +439,26 @@ class Word2ImgFrame(BaseToolFrame):
             )
 
             try:
-                images = convert_word_to_images(
-                    input_path=file_path,
-                    output_dir=out_dir,
-                    image_format=img_format,
-                    dpi=dpi,
-                )
-                self.log(f"[{index}/{total_files}] 转换成功！共生成了 {len(images)} 张图片：")
-                for idx, img in enumerate(images, 1):
-                    self.log(f"  -> 已保存: {img.name}")
-                success_count += 1
-                all_generated_images.extend(images)
+                if output_mode == "pdf":
+                    pdf_path = convert_word_to_pdf(
+                        input_path=file_path,
+                        output_dir=out_dir,
+                    )
+                    self.log(f"[{index}/{total_files}] 转换成功！已保存: {pdf_path.name}")
+                    success_count += 1
+                    all_generated_outputs.append(pdf_path)
+                else:
+                    images = convert_word_to_images(
+                        input_path=file_path,
+                        output_dir=out_dir,
+                        image_format=img_format,
+                        dpi=dpi,
+                    )
+                    self.log(f"[{index}/{total_files}] 转换成功！共生成了 {len(images)} 张图片：")
+                    for img in images:
+                        self.log(f"  -> 已保存: {img.name}")
+                    success_count += 1
+                    all_generated_outputs.extend(images)
             except Exception as ex:
                 self.log(f"[{index}/{total_files}] 转换失败！原因: {str(ex)}", level="ERROR")
 
@@ -417,11 +469,28 @@ class Word2ImgFrame(BaseToolFrame):
             self.log(f"失败: {total_files - success_count}", level="WARNING")
 
         self.update_progress(1.0, f"完成！成功转换 {success_count}/{total_files} 个文档。")
-        
+
         if success_count == total_files:
-            self.show_dialog("成功", f"批量 Word 转图片任务全部完成！\n\n共成功转换 {success_count} 个文档，生成了 {len(all_generated_images)} 张图片。")
+            if output_mode == "pdf":
+                self.show_dialog(
+                    "成功",
+                    f"批量 Word 转换任务全部完成！\n\n"
+                    f"共成功转换 {success_count} 个文档，生成了 {len(all_generated_outputs)} 个 PDF。",
+                )
+            else:
+                self.show_dialog(
+                    "成功",
+                    f"批量 Word 转换任务全部完成！\n\n"
+                    f"共成功转换 {success_count} 个文档，生成了 {len(all_generated_outputs)} 张图片。",
+                )
         else:
-            self.show_dialog("完成", f"批量 Word 转图片任务已结束。\n\n成功: {success_count} 个文档\n失败: {total_files - success_count} 个文档\n\n详情请查看日志区。")
+            self.show_dialog(
+                "完成",
+                f"批量 Word 转换任务已结束。\n\n"
+                f"成功: {success_count} 个文档\n"
+                f"失败: {total_files - success_count} 个文档\n\n"
+                f"详情请查看日志区。",
+            )
 
     def _split_supported_word_files(self, paths: list[str]) -> tuple[list[str], list[str]]:
         valid_files = []

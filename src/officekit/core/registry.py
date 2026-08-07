@@ -123,7 +123,7 @@ def _register_builtin_tools() -> None:
                 "officekit.tools.word2img.ui",
             ),
             "word2img",
-            "Word 转图片",
+            "Word 转换",
             "IMAGE_OUTLINED",
             "IMAGE",
         ),

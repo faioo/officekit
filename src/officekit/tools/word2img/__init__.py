@@ -1,1 +1,1 @@
-"""Word document to image conversion tool."""
+"""Word document to image or PDF conversion tool."""
